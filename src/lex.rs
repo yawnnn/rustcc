@@ -17,7 +17,7 @@ pub enum TokenKind {
 #[derive(Debug)]
 pub struct Token {
     pub kind: TokenKind,
-    pub value: String
+    pub value: String,
 }
 
 struct Lexer<'a> {
@@ -45,12 +45,8 @@ impl<'a> Lexer<'a> {
             '!' => Bang,
             '-' => Minus,
             c if c.is_whitespace() => {
-                while let Some(c) = self.peek() {
-                    match c {
-                        c if c.is_whitespace() => self.next_char(),
-                        _ => break,
-                    };
-                }
+                self.advance_while(char::is_whitespace);
+
                 start = self.chars.as_str();
                 self.next_token()?.kind
             }
@@ -61,7 +57,7 @@ impl<'a> Lexer<'a> {
             c if Self::is_ident_start(c) => {
                 self.advance_while(Self::is_ident);
                 Ident
-            },
+            }
             _ => panic!("Unhandled token"),
         };
 
