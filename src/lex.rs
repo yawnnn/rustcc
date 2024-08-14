@@ -1,15 +1,8 @@
-use regex::Regex;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum KeywordKind {
-    Return,
-    Int,
-}
+use std::str::Chars;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
     Ident,
-    Keyword(KeywordKind),
     Literal,
     Semicolon,
     OpenParen,
@@ -21,51 +14,98 @@ pub enum TokenKind {
     Bang,
 }
 
+#[derive(Debug)]
 pub struct Token {
     pub kind: TokenKind,
-    pub value: String,
+    pub value: String
 }
 
-pub fn lex(input: &str) -> Vec<Token> {
-    use TokenKind::*;
+struct Lexer<'a> {
+    chars: Chars<'a>,
+    len: usize,
+}
 
-    #[rustfmt::skip]
-    let patterns = [
-        (OpenBrace,                     r"\{"),
-        (CloseBrace,                    r"\}"),
-        (OpenParen,                     r"\("),
-        (CloseParen,                    r"\)"),
-        (Semicolon,                     r";"),
-        (Keyword(KeywordKind::Int),     r"int\s"),
-        (Keyword(KeywordKind::Return),  r"return\s"),
-        (Ident,                         r"[a-zA-Z]\w*"),
-        (Literal,                       r"[0-9]+"),
-        (Minus,                         r"-"),
-        (Tilde,                         r"~"),
-        (Bang,                          r"!"),
-    ];
+impl<'a> Lexer<'a> {
+    fn new(input: &'a str) -> Lexer<'a> {
+        Lexer { chars: input.chars(), len: input.len() }
+    }
 
-    let patterns =
-        patterns.into_iter().map(|(t, p)| (t, Regex::new(p).unwrap())).collect::<Vec<_>>();
+    fn next_token(&mut self) -> Option<Token> {
+        use TokenKind::*;
 
-    let mut input = input.trim();
-    let mut tokens = Vec::new();
-    let mut old_len = 0;
+        let mut start = self.chars.as_str();
 
-    while input.len() != old_len {
-        old_len = input.len();
-
-        for (token_kind, pattern) in patterns.iter() {
-            if let Some(m) = pattern.find(input) {
-                if m.start() == 0 {
-                    tokens.push(Token { kind: *token_kind, value: m.as_str().to_owned() });
-                    input = input[m.len()..].trim();
+        let kind = match self.next_char()? {
+            '{' => OpenBrace,
+            '}' => CloseBrace,
+            '(' => OpenParen,
+            ')' => CloseParen,
+            ';' => Semicolon,
+            '~' => Tilde,
+            '!' => Bang,
+            '-' => Minus,
+            c if c.is_whitespace() => {
+                while let Some(c) = self.peek() {
+                    match c {
+                        c if c.is_whitespace() => self.next_char(),
+                        _ => break,
+                    };
                 }
+                start = self.chars.as_str();
+                self.next_token()?.kind
             }
+            c if c.is_numeric() => {
+                self.advance_while(char::is_numeric);
+                Literal
+            }
+            c if Self::is_ident_start(c) => {
+                self.advance_while(Self::is_ident);
+                Ident
+            },
+            _ => panic!("Unhandled token"),
+        };
+
+        // temporary
+        let value = &start[..start.len() - self.len];
+        Some(Token { kind, value: value.to_owned() })
+    }
+
+    fn next_char(&mut self) -> Option<char> {
+        let c = self.chars.next()?;
+        self.len -= 1;
+        Some(c)
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.chars.clone().next()
+    }
+
+    fn advance_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
+        while let Some(c) = self.peek() {
+            match c {
+                c if predicate(c) => self.next_char(),
+                _ => break,
+            };
         }
     }
 
-    //println!("tokens: \n{tokens:?}\n");
+    fn is_ident_start(c: char) -> bool {
+        c == '_' || c.is_alphabetic()
+    }
+
+    fn is_ident(c: char) -> bool {
+        c == '_' || c.is_alphanumeric()
+    }
+}
+
+// temporary
+pub fn lex(input: &str) -> Vec<Token> {
+    let mut lexer = Lexer::new(input);
+    let mut tokens = Vec::new();
+
+    while let Some(token) = lexer.next_token() {
+        tokens.push(token);
+    }
 
     tokens
 }

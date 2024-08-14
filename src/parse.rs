@@ -130,7 +130,7 @@ fn parse_statement(tokens: &mut Iter<Token>, ast: &mut Ast, parent: AstKey) -> O
     let stmt = AstData::Stmt(Statement());
     let kstmt = ast.insert(parent, stmt);
 
-    if !matches!(tokens.next()?.kind, TokenKind::Keyword(KeywordKind::Return)) {
+    if !matches!(tokens.next()?.value.as_str(), "return") {
         return None;
     }
 
@@ -145,7 +145,7 @@ fn parse_statement(tokens: &mut Iter<Token>, ast: &mut Ast, parent: AstKey) -> O
 }
 
 fn parse_function(tokens: &mut Iter<Token>, ast: &mut Ast, parent: AstKey) -> Option<AstKey> {
-    if !matches!(tokens.next()?.kind, TokenKind::Keyword(KeywordKind::Int)) {
+    if !matches!(tokens.next()?.value.as_str(), "int") {
         return None;
     }
 
