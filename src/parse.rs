@@ -1,5 +1,3 @@
-use core::slice::Iter;
-
 use crate::lex::*;
 
 // #[derive(Debug)]
@@ -108,93 +106,110 @@ impl Ast {
     }
 }
 
-fn parse_expression(tokens: &mut Iter<Token>, ast: &mut Ast, parent: AstKey) -> Option<AstKey> {
-    let token = tokens.next()?;
+struct Parser<'a> {
+    src: &'a str,
+    tokens: std::vec::IntoIter<Token>,
+    ast: Ast,
+}
+
+impl<'a> Parser<'a> {
+    fn new(src: &'a str, tokens: Vec<Token>) -> Parser {
+        Parser { src, tokens: tokens.into_iter(), ast: Ast::new() }
+    }
+}
+
+fn parse_expression(parser: &mut Parser, parent: AstKey) -> Option<AstKey> {
+    let token = parser.tokens.next()?;
     match token {
-        Token { kind: TokenKind::Literal, value } => {
-            let exp = AstData::Exp(Expression::Constant(value.parse::<i64>().ok()?));
-            Some(ast.insert(parent, exp))
+        Token { kind: TokenKind::Literal, .. } => {
+            let exp = AstData::Exp(Expression::Constant(
+                token.get_value(parser.src).parse::<i64>().ok()?,
+            ));
+            Some(parser.ast.insert(parent, exp))
         }
         Token { kind, .. } => {
-            let unopkind = UnOpKind::try_from(kind)?;
+            let unopkind = UnOpKind::try_from(&kind)?;
             let exp = AstData::Exp(Expression::UnOp(unopkind));
-            let kexp = ast.insert(parent, exp);
-            let ksubexp = parse_expression(tokens, ast, kexp)?;
-            ast.get_mut(kexp).children.push(ksubexp);
+            let kexp = parser.ast.insert(parent, exp);
+            let ksubexp = parse_expression(parser, kexp)?;
+            parser.ast.get_mut(kexp).children.push(ksubexp);
             Some(kexp)
         }
     }
 }
 
-fn parse_statement(tokens: &mut Iter<Token>, ast: &mut Ast, parent: AstKey) -> Option<AstKey> {
+fn parse_statement(parser: &mut Parser, parent: AstKey) -> Option<AstKey> {
     let stmt = AstData::Stmt(Statement());
-    let kstmt = ast.insert(parent, stmt);
+    let kstmt = parser.ast.insert(parent, stmt);
 
-    if !matches!(tokens.next()?.value.as_str(), "return") {
+    let token = parser.tokens.next()?;
+    if !matches!(token.get_value(parser.src), "return") {
         return None;
     }
 
-    let kexp = parse_expression(tokens, ast, kstmt)?;
+    let kexp = parse_expression(parser, kstmt)?;
 
-    if !matches!(tokens.next()?.kind, TokenKind::Semicolon) {
+    if !matches!(parser.tokens.next()?.kind, TokenKind::Semicolon) {
         return None;
     }
 
-    ast.get_mut(kstmt).children.push(kexp);
+    parser.ast.get_mut(kstmt).children.push(kexp);
     Some(kstmt)
 }
 
-fn parse_function(tokens: &mut Iter<Token>, ast: &mut Ast, parent: AstKey) -> Option<AstKey> {
-    if !matches!(tokens.next()?.value.as_str(), "int") {
+fn parse_function(parser: &mut Parser, parent: AstKey) -> Option<AstKey> {
+    let token = parser.tokens.next()?;
+    if !matches!(token.get_value(parser.src), "int") {
         return None;
     }
 
-    let name = match tokens.next()? {
-        Token { kind: TokenKind::Ident, value } => value.clone(),
+    let name = match parser.tokens.next()? {
+        token @ Token { kind: TokenKind::Ident, .. } => token.get_value(parser.src).to_owned(),
         _ => return None,
     };
 
     let func = AstData::Func(Function(name));
-    let kfunc = ast.insert(parent, func);
+    let kfunc = parser.ast.insert(parent, func);
 
-    if !matches!(tokens.next()?.kind, TokenKind::OpenParen) {
+    if !matches!(parser.tokens.next()?.kind, TokenKind::OpenParen) {
         return None;
     }
 
-    if !matches!(tokens.next()?.kind, TokenKind::CloseParen) {
+    if !matches!(parser.tokens.next()?.kind, TokenKind::CloseParen) {
         return None;
     }
 
-    if !matches!(tokens.next()?.kind, TokenKind::OpenBrace) {
+    if !matches!(parser.tokens.next()?.kind, TokenKind::OpenBrace) {
         return None;
     }
 
-    let kstmt = parse_statement(tokens, ast, kfunc)?;
+    let kstmt = parse_statement(parser, kfunc)?;
 
-    if !matches!(tokens.next()?.kind, TokenKind::CloseBrace) {
+    if !matches!(parser.tokens.next()?.kind, TokenKind::CloseBrace) {
         return None;
     }
 
-    ast.get_mut(kfunc).children.push(kstmt);
+    parser.ast.get_mut(kfunc).children.push(kstmt);
     Some(kfunc)
 }
 
-fn parse_program(tokens: &mut Iter<Token>, ast: &mut Ast, parent: AstKey) -> Option<AstKey> {
+fn parse_program(parser: &mut Parser, parent: AstKey) -> Option<AstKey> {
     let prog = AstData::Prog(Program());
-    let kprog = ast.insert(parent, prog);
+    let kprog = parser.ast.insert(parent, prog);
 
-    let funck = parse_function(tokens, ast, kprog)?;
+    let funck = parse_function(parser, kprog)?;
 
-    ast.get_mut(kprog).children.push(funck);
+    parser.ast.get_mut(kprog).children.push(funck);
     Some(kprog)
 }
 
-pub fn parse(input: Vec<Token>) -> Option<Ast> {
-    let mut ast = Ast::new();
-    let mut tokens = input.iter();
-    parse_program(&mut tokens, &mut ast, 0)?;
+pub fn parse(dbg_mode: bool, src: &str, input: Vec<Token>) -> Option<Ast> {
+    let mut parser = Parser::new(src, input);
+    parse_program(&mut parser, 0)?;
 
-    //println!("ast: \n{ast:?}\n");
+    if dbg_mode {
+        println!("ast: \n{:?}\n", &parser.ast);
+    }
 
-    Some(ast)
+    Some(parser.ast)
 }

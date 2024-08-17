@@ -1,3 +1,4 @@
+use core::str;
 use std::str::Chars;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,23 +18,35 @@ pub enum TokenKind {
 #[derive(Debug)]
 pub struct Token {
     pub kind: TokenKind,
-    pub value: String,
+    start: usize,
+    end: usize,
+}
+
+impl Token {
+    // `input` is the original string
+    pub fn get_value<'a>(&self, input: &'a str) -> &'a str {
+        //let value = &input[self.start..self.end];
+        //println!("\nstart: {}, end: {}, value: {value}", self.start, self.end);
+        //value
+        &input[self.start..self.end]
+    }
 }
 
 struct Lexer<'a> {
+    start: &'a str,
     chars: Chars<'a>,
-    len: usize,
+    remaining: usize,
 }
 
 impl<'a> Lexer<'a> {
     fn new(input: &'a str) -> Lexer<'a> {
-        Lexer { chars: input.chars(), len: input.len() }
+        Lexer { start: input, chars: input.chars(), remaining: input.len() }
     }
 
     fn next_token(&mut self) -> Option<Token> {
         use TokenKind::*;
 
-        let mut start = self.chars.as_str();
+        let start = self.get_offset_from_start();
 
         let kind = match self.next_char()? {
             '{' => OpenBrace,
@@ -44,12 +57,6 @@ impl<'a> Lexer<'a> {
             '~' => Tilde,
             '!' => Bang,
             '-' => Minus,
-            c if c.is_whitespace() => {
-                self.advance_while(char::is_whitespace);
-
-                start = self.chars.as_str();
-                self.next_token()?.kind
-            }
             c if c.is_numeric() => {
                 self.advance_while(char::is_numeric);
                 Literal
@@ -58,17 +65,27 @@ impl<'a> Lexer<'a> {
                 self.advance_while(Self::is_ident);
                 Ident
             }
+            c if c.is_whitespace() => {
+                self.advance_while(char::is_whitespace);
+                return self.next_token();
+            }
             _ => panic!("Unhandled token"),
         };
 
-        // temporary
-        let value = &start[..start.len() - self.len];
-        Some(Token { kind, value: value.to_owned() })
+        let end = self.get_offset_from_start();
+        Some(Token { kind, start, end })
+    }
+
+    fn get_offset_from_start(&self) -> usize {
+        // SAFETY: both pointers are derived from the same slice
+        let start = self.start.as_ptr();
+        let pos = self.chars.as_str().as_ptr();
+        (unsafe { pos.offset_from(start) }) as usize
     }
 
     fn next_char(&mut self) -> Option<char> {
         let c = self.chars.next()?;
-        self.len -= 1;
+        self.remaining -= 1;
         Some(c)
     }
 
@@ -95,12 +112,16 @@ impl<'a> Lexer<'a> {
 }
 
 // temporary
-pub fn lex(input: &str) -> Vec<Token> {
+pub fn lex(dbg_mode: bool, input: &str) -> Vec<Token> {
     let mut lexer = Lexer::new(input);
     let mut tokens = Vec::new();
 
     while let Some(token) = lexer.next_token() {
         tokens.push(token);
+    }
+    
+    if dbg_mode {
+        println!("{tokens:?}");
     }
 
     tokens
