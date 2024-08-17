@@ -118,6 +118,7 @@ impl<'a> ParseContext<'a> {
     }
 
     fn next_token(&mut self) -> Option<Token> {
+        // `self.tokens` is an iterator, therefore .find() advances it up until that point
         self.tokens.find(|t| t.kind != TokenKind::Whitespace)
     }
 }
