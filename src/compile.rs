@@ -26,10 +26,7 @@ fn link<P: AsRef<Path>>(asm_name: P) -> Option<()> {
     let exe_name = exe_name.to_str()?;
     let asm_name = asm_name.as_ref().to_str()?;
     let _ = fs::remove_file(exe_name); // delete if exists
-    let process = process::Command::new("gcc")
-        .args([asm_name, "-o", exe_name])
-        .spawn()
-        .ok()?;
+    let process = process::Command::new("gcc").args([asm_name, "-o", exe_name]).spawn().ok()?;
     let output = process.wait_with_output().ok()?;
     let stdout = String::from_utf8(output.stdout).ok()?;
     let stderr = String::from_utf8(output.stderr).ok()?;
@@ -41,12 +38,12 @@ fn link<P: AsRef<Path>>(asm_name: P) -> Option<()> {
 }
 
 pub fn compile<P: AsRef<Path>>(src_name: P) -> Option<()> {
-    let dbg_mode = false;
+    let dbg = false;
 
     let src = fs::read_to_string(&src_name).unwrap();
-    let tokens = lex(dbg_mode, &src);
-    let ast = parse(dbg_mode, &src, tokens)?;
-    let asm = codegen(dbg_mode, ast)?;
+    let tokens = lex(dbg, &src);
+    let ast = parse(dbg, &src, tokens)?;
+    let asm = codegen(dbg, ast)?;
     let asm_name = write_asm(&src_name, &asm)?;
     link(asm_name)
 }

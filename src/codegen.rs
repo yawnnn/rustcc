@@ -37,10 +37,10 @@ fn generate(ast: &Ast, key: AstKey) -> String {
     output
 }
 
-pub fn codegen(dbg_mode: bool, input: Ast) -> Option<String> {
+pub fn codegen(dbg: bool, input: Ast) -> Option<String> {
     let asm = generate(&input, 0);
 
-    if dbg_mode {
+    if dbg {
         println!("asm: \n{asm}\n");
     }
 

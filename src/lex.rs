@@ -24,23 +24,20 @@ pub struct Token {
 
 impl Token {
     // `input` is the original string
-    pub fn get_value<'a>(&self, input: &'a str) -> &'a str {
-        //let value = &input[self.start..self.end];
-        //println!("\nstart: {}, end: {}, value: {value}", self.start, self.end);
-        //value
+    pub fn as_str<'a>(&self, input: &'a str) -> &'a str {
         &input[self.start..self.end]
     }
 }
 
 struct Lexer<'a> {
-    start: &'a str,
+    src: &'a str,
     chars: Chars<'a>,
     remaining: usize,
 }
 
 impl<'a> Lexer<'a> {
     fn new(input: &'a str) -> Lexer<'a> {
-        Lexer { start: input, chars: input.chars(), remaining: input.len() }
+        Lexer { src: input, chars: input.chars(), remaining: input.len() }
     }
 
     fn next_token(&mut self) -> Option<Token> {
@@ -78,7 +75,7 @@ impl<'a> Lexer<'a> {
 
     fn get_offset_from_start(&self) -> usize {
         // SAFETY: both pointers are derived from the same slice
-        let start = self.start.as_ptr();
+        let start = self.src.as_ptr();
         let pos = self.chars.as_str().as_ptr();
         (unsafe { pos.offset_from(start) }) as usize
     }
@@ -112,15 +109,15 @@ impl<'a> Lexer<'a> {
 }
 
 // temporary
-pub fn lex(dbg_mode: bool, input: &str) -> Vec<Token> {
-    let mut lexer = Lexer::new(input);
+pub fn lex(dbg: bool, src: &str) -> Vec<Token> {
+    let mut lexer = Lexer::new(src);
     let mut tokens = Vec::new();
 
     while let Some(token) = lexer.next_token() {
         tokens.push(token);
     }
-    
-    if dbg_mode {
+
+    if dbg {
         println!("{tokens:?}");
     }
 
