@@ -1,8 +1,8 @@
 use core::str;
-use std::str::Chars;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
+    Whitespace,
     Ident,
     Literal,
     Semicolon,
@@ -23,27 +23,60 @@ pub struct Token {
 }
 
 impl Token {
-    // `input` is the original string
-    pub fn as_str<'a>(&self, input: &'a str) -> &'a str {
-        &input[self.start..self.end]
+    // `src` is the full src string
+    pub fn as_str<'a>(&self, src: &'a str) -> &'a str {
+        src.get(self.start..self.end).unwrap()
     }
 }
 
 struct Lexer<'a> {
     src: &'a str,
-    chars: Chars<'a>,
-    remaining: usize,
+    chars: std::str::Chars<'a>,
 }
 
 impl<'a> Lexer<'a> {
     fn new(input: &'a str) -> Lexer<'a> {
-        Lexer { src: input, chars: input.chars(), remaining: input.len() }
+        Lexer { src: input, chars: input.chars() }
+    }
+
+    fn next_char(&mut self) -> Option<char> {
+        self.chars.next()
+    }
+
+    fn peek_char(&self) -> Option<char> {
+        self.chars.clone().next()
+    }
+
+    fn advance_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
+        while let Some(c) = self.peek_char() {
+            match predicate(c) {
+                true => self.next_char(),
+                false => break,
+            };
+        }
+    }
+
+    fn get_pos_in_str(&self) -> usize {
+        let start = self.src.as_ptr();
+        let curr = self.chars.as_str().as_ptr();
+        // SAFETY:
+        // - both pointers are derived from the same slice
+        // - start is always <= curr
+        unsafe { curr.offset_from(start) as usize }
+    }
+
+    fn is_ident_start(c: char) -> bool {
+        c == '_' || c.is_alphabetic()
+    }
+
+    fn is_ident(c: char) -> bool {
+        c == '_' || c.is_alphanumeric()
     }
 
     fn next_token(&mut self) -> Option<Token> {
         use TokenKind::*;
 
-        let start = self.get_offset_from_start();
+        let start = self.get_pos_in_str();
 
         let kind = match self.next_char()? {
             '{' => OpenBrace,
@@ -64,58 +97,23 @@ impl<'a> Lexer<'a> {
             }
             c if c.is_whitespace() => {
                 self.advance_while(char::is_whitespace);
-                return self.next_token();
+                Whitespace
             }
             _ => panic!("Unhandled token"),
         };
 
-        let end = self.get_offset_from_start();
+        let end = self.get_pos_in_str();
         Some(Token { kind, start, end })
-    }
-
-    fn get_offset_from_start(&self) -> usize {
-        // SAFETY: both pointers are derived from the same slice
-        let start = self.src.as_ptr();
-        let pos = self.chars.as_str().as_ptr();
-        (unsafe { pos.offset_from(start) }) as usize
-    }
-
-    fn next_char(&mut self) -> Option<char> {
-        let c = self.chars.next()?;
-        self.remaining -= 1;
-        Some(c)
-    }
-
-    fn peek(&self) -> Option<char> {
-        self.chars.clone().next()
-    }
-
-    fn advance_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
-        while let Some(c) = self.peek() {
-            match c {
-                c if predicate(c) => self.next_char(),
-                _ => break,
-            };
-        }
-    }
-
-    fn is_ident_start(c: char) -> bool {
-        c == '_' || c.is_alphabetic()
-    }
-
-    fn is_ident(c: char) -> bool {
-        c == '_' || c.is_alphanumeric()
     }
 }
 
-// temporary
-pub fn lex(dbg: bool, src: &str) -> Vec<Token> {
+pub fn iter_tokens(src: &str) -> impl Iterator<Item = Token> + '_ {
     let mut lexer = Lexer::new(src);
-    let mut tokens = Vec::new();
+    std::iter::from_fn(move || lexer.next_token())
+}
 
-    while let Some(token) = lexer.next_token() {
-        tokens.push(token);
-    }
+pub fn lex(dbg: bool, src: &str) -> Vec<Token> {
+    let tokens = iter_tokens(src).collect::<Vec<_>>();
 
     if dbg {
         println!("{tokens:?}");

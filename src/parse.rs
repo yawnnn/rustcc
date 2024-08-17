@@ -116,10 +116,14 @@ impl<'a> ParseContext<'a> {
     fn new(src: &'a str, tokens: Vec<Token>) -> ParseContext {
         ParseContext { src, tokens: tokens.into_iter(), ast: Ast::new() }
     }
+
+    fn next_token(&mut self) -> Option<Token> {
+        self.tokens.find(|t| t.kind != TokenKind::Whitespace)
+    }
 }
 
 fn parse_expression(ctx: &mut ParseContext, parent: AstKey) -> Option<AstKey> {
-    let token = ctx.tokens.next()?;
+    let token = ctx.next_token()?;
     match token {
         Token { kind: TokenKind::Literal, .. } => {
             let exp =
@@ -141,14 +145,14 @@ fn parse_statement(ctx: &mut ParseContext, parent: AstKey) -> Option<AstKey> {
     let stmt = AstData::Stmt(Statement());
     let kstmt = ctx.ast.insert(parent, stmt);
 
-    let token = ctx.tokens.next()?;
+    let token = ctx.next_token()?;
     if !matches!(token.as_str(ctx.src), "return") {
         return None;
     }
 
     let kexp = parse_expression(ctx, kstmt)?;
 
-    if !matches!(ctx.tokens.next()?.kind, TokenKind::Semicolon) {
+    if !matches!(ctx.next_token()?.kind, TokenKind::Semicolon) {
         return None;
     }
 
@@ -157,12 +161,12 @@ fn parse_statement(ctx: &mut ParseContext, parent: AstKey) -> Option<AstKey> {
 }
 
 fn parse_function(ctx: &mut ParseContext, parent: AstKey) -> Option<AstKey> {
-    let token = ctx.tokens.next()?;
+    let token = ctx.next_token()?;
     if !matches!(token.as_str(ctx.src), "int") {
         return None;
     }
 
-    let name = match ctx.tokens.next()? {
+    let name = match ctx.next_token()? {
         token @ Token { kind: TokenKind::Ident, .. } => token.as_str(ctx.src).to_owned(),
         _ => return None,
     };
@@ -170,21 +174,21 @@ fn parse_function(ctx: &mut ParseContext, parent: AstKey) -> Option<AstKey> {
     let func = AstData::Func(Function(name));
     let kfunc = ctx.ast.insert(parent, func);
 
-    if !matches!(ctx.tokens.next()?.kind, TokenKind::OpenParen) {
+    if !matches!(ctx.next_token()?.kind, TokenKind::OpenParen) {
         return None;
     }
 
-    if !matches!(ctx.tokens.next()?.kind, TokenKind::CloseParen) {
+    if !matches!(ctx.next_token()?.kind, TokenKind::CloseParen) {
         return None;
     }
 
-    if !matches!(ctx.tokens.next()?.kind, TokenKind::OpenBrace) {
+    if !matches!(ctx.next_token()?.kind, TokenKind::OpenBrace) {
         return None;
     }
 
     let kstmt = parse_statement(ctx, kfunc)?;
 
-    if !matches!(ctx.tokens.next()?.kind, TokenKind::CloseBrace) {
+    if !matches!(ctx.next_token()?.kind, TokenKind::CloseBrace) {
         return None;
     }
 
