@@ -13,6 +13,9 @@ pub enum TokenKind {
     Minus,
     Tilde,
     Bang,
+    Plus,
+    Star,
+    Slash,
 }
 
 #[derive(Debug)]
@@ -87,6 +90,9 @@ impl<'a> Lexer<'a> {
             '~' => Tilde,
             '!' => Bang,
             '-' => Minus,
+            '+' => Plus,
+            '*' => Star,
+            '/' => Slash,
             c if c.is_numeric() => {
                 self.advance_while(char::is_numeric);
                 Literal

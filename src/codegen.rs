@@ -17,7 +17,7 @@ fn generate(ast: &Ast, key: AstKey) -> String {
         }
         AstData::Exp(Expression::Constant(c)) => output = format!("movl ${c}, %eax\n"),
         AstData::Exp(Expression::UnOp(kind)) => match kind {
-            UnOpKind::Minus => {
+            UnOpKind::Negation => {
                 output += &generate(ast, node.children[0]);
                 output += "neg %eax\n";
             }
@@ -32,6 +32,7 @@ fn generate(ast: &Ast, key: AstKey) -> String {
                 output += "sete %al\n";
             }
         },
+        _ => todo!(),
     }
 
     output

@@ -2,7 +2,7 @@ use crate::lex::*;
 
 // #[derive(Debug)]
 // pub enum ArithmeticOp {
-//     Minus,
+//     Negation,
 // }
 
 // #[derive(Debug)]
@@ -24,7 +24,7 @@ use crate::lex::*;
 
 #[derive(Debug)]
 pub enum UnOpKind {
-    Minus,
+    Negation,
     BitwiseNot,
     LogicalNot,
 }
@@ -32,9 +32,29 @@ pub enum UnOpKind {
 impl UnOpKind {
     fn try_from(kind: &TokenKind) -> Option<Self> {
         match kind {
-            TokenKind::Minus => Some(UnOpKind::Minus),
-            TokenKind::Tilde => Some(UnOpKind::BitwiseNot),
-            TokenKind::Bang => Some(UnOpKind::LogicalNot),
+            TokenKind::Minus => Some(Self::Negation),
+            TokenKind::Tilde => Some(Self::BitwiseNot),
+            TokenKind::Bang => Some(Self::LogicalNot),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum BinOpKind {
+    Addition,
+    Subtraction,
+    Multiplication,
+    Division,
+}
+
+impl BinOpKind {
+    fn try_from(kind: &TokenKind) -> Option<Self> {
+        match kind {
+            TokenKind::Plus => Some(Self::Addition),
+            TokenKind::Minus => Some(Self::Subtraction),
+            TokenKind::Star => Some(Self::Multiplication),
+            TokenKind::Slash => Some(Self::Division),
             _ => None,
         }
     }
@@ -44,6 +64,7 @@ impl UnOpKind {
 pub enum Expression {
     Constant(i64),
     UnOp(UnOpKind),
+    BinOp(BinOpKind),
 }
 
 #[derive(Debug)]
@@ -127,14 +148,22 @@ fn parse_expression(ctx: &mut ParseContext, parent: AstKey) -> Option<AstKey> {
     let token = ctx.next_token()?;
     match token {
         Token { kind: TokenKind::Literal, .. } => {
-            let exp =
-                AstData::Exp(Expression::Constant(token.as_str(ctx.src).parse::<i64>().ok()?));
+            let const_exp = Expression::Constant(token.as_str(ctx.src).parse::<i64>().ok()?);
+            let exp = AstData::Exp(const_exp);
             Some(ctx.ast.insert(parent, exp))
         }
         Token { kind, .. } => {
-            let unopkind = UnOpKind::try_from(&kind)?;
-            let exp = AstData::Exp(Expression::UnOp(unopkind));
-            let kexp = ctx.ast.insert(parent, exp);
+            let mut exp = None;
+
+            if let Some(unopkind) = UnOpKind::try_from(&kind) {
+                let unop_exp = Expression::UnOp(unopkind);
+                exp = Some(AstData::Exp(unop_exp));
+            } else if let Some(binopkind) = BinOpKind::try_from(&kind) {
+                let binop_exp = Expression::BinOp(binopkind);
+                exp = Some(AstData::Exp(binop_exp))
+            }
+
+            let kexp = ctx.ast.insert(parent, exp?);
             let ksubexp = parse_expression(ctx, kexp)?;
             ctx.ast.get_mut(kexp).children.push(ksubexp);
             Some(kexp)
