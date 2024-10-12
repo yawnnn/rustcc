@@ -1,4 +1,4 @@
-use core::str;
+use std::str::Chars;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
@@ -18,28 +18,25 @@ pub enum TokenKind {
     Slash,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Token {
     pub kind: TokenKind,
-    start: usize,
-    end: usize,
 }
 
 impl Token {
-    // `src` is the full src string
-    pub fn as_str<'a>(&self, src: &'a str) -> &'a str {
-        src.get(self.start..self.end).unwrap()
+    fn new(kind: TokenKind) -> Self {
+        Token { kind }
     }
 }
 
-struct Lexer<'a> {
-    src: &'a str,
-    chars: std::str::Chars<'a>,
+#[derive(Clone)]
+pub struct Lexer<'a> {
+    chars: Chars<'a>,
 }
 
 impl<'a> Lexer<'a> {
     fn new(input: &'a str) -> Lexer<'a> {
-        Lexer { src: input, chars: input.chars() }
+        Lexer { chars: input.chars() }
     }
 
     fn next_char(&mut self) -> Option<char> {
@@ -59,15 +56,6 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn get_pos_in_str(&self) -> usize {
-        let start = self.src.as_ptr();
-        let curr = self.chars.as_str().as_ptr();
-        // SAFETY:
-        // - both pointers are derived from the same slice
-        // - start is always <= curr
-        unsafe { curr.offset_from(start) as usize }
-    }
-
     fn is_ident_start(c: char) -> bool {
         c == '_' || c.is_alphabetic()
     }
@@ -76,10 +64,10 @@ impl<'a> Lexer<'a> {
         c == '_' || c.is_alphanumeric()
     }
 
-    fn next_token(&mut self) -> Option<Token> {
+    pub fn next(&mut self) -> Option<(Token, &'a str)> {
         use TokenKind::*;
 
-        let start = self.get_pos_in_str();
+        let start = self.chars.as_str();
 
         let kind = match self.next_char()? {
             '{' => OpenBrace,
@@ -108,19 +96,30 @@ impl<'a> Lexer<'a> {
             _ => panic!("Unhandled token"),
         };
 
-        let end = self.get_pos_in_str();
-        Some(Token { kind, start, end })
+        let end = self.chars.as_str();
+        let len = start.len() - end.len();
+        let str = &start[..len];
+
+        Some((Token::new(kind), str))
+    }
+
+    // pub fn peek(&self) -> Option<(Token, &str)> {
+    //     let start = self.chars.as_str();
+    //     let (token, _) = self.clone().next()?;
+    //     let len = token.len;
+
+    //     Some((token, &start[..len]))
+    // }
+
+    pub fn into_iter(mut self) -> impl Iterator<Item = (Token, &'a str)> + 'a {
+        std::iter::from_fn(move || self.next())
     }
 }
 
-pub fn iter_tokens(src: &str) -> impl Iterator<Item = Token> + '_ {
-    let mut lexer = Lexer::new(src);
-    std::iter::from_fn(move || lexer.next_token())
-}
+pub fn lex(dbg: bool, src: &str) -> Vec<(Token, &str)> {
+    let tokens = Lexer::new(src).into_iter().collect::<Vec<_>>();
 
-pub fn lex(dbg: bool, src: &str) -> Vec<Token> {
-    let tokens = iter_tokens(src).collect::<Vec<_>>();
-
+    // how to conditionally compile this ?
     if dbg {
         println!("{tokens:?}");
     }

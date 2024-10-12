@@ -42,7 +42,7 @@ pub fn compile<P: AsRef<Path>>(src_name: P) -> Option<()> {
 
     let src = fs::read_to_string(&src_name).unwrap();
     let tokens = lex(dbg, &src);
-    let ast = parse(dbg, &src, tokens)?;
+    let ast = parse(dbg, tokens)?;
     let asm = codegen(dbg, ast)?;
     let asm_name = write_asm(&src_name, &asm)?;
     link(asm_name)
