@@ -116,13 +116,11 @@ impl<'a> Lexer<'a> {
     }
 }
 
-pub fn lex(dbg: bool, src: &str) -> Vec<(Token, &str)> {
+pub fn lex(src: &str) -> Vec<(Token, &str)> {
     let tokens = Lexer::new(src).into_iter().collect::<Vec<_>>();
 
-    // how to conditionally compile this ?
-    if dbg {
-        println!("{tokens:?}");
-    }
+    #[cfg(debug_assertions)]
+    println!("{tokens:?}");
 
     tokens
 }

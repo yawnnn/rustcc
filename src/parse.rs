@@ -242,15 +242,14 @@ fn parse_program(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     Some(kprog)
 }
 
-pub fn parse(dbg: bool, tokens: Vec<(Token, &str)>) -> Option<Ast> {
+pub fn parse(tokens: Vec<(Token, &str)>) -> Option<Ast> {
     let mut ast = Ast::new();
     let mut cursor = Cursor::new(tokens);
 
     parse_program(&mut ast, &mut cursor)?;
 
-    if dbg {
-        println!("ast: \n{:?}\n", &ast);
-    }
+    #[cfg(debug_assertions)]
+    println!("ast: \n{:?}\n", &ast);
 
     Some(ast)
 }

@@ -4,7 +4,9 @@ fn generate(ast: &Ast, node: &AstNode) -> String {
     let mut output = String::new();
 
     match &node.data {
-        AstData::Prog(_) => node.children.iter().for_each(|k| output += &generate(ast, ast.get(*k))),
+        AstData::Prog(_) => {
+            node.children.iter().for_each(|k| output += &generate(ast, ast.get(*k)))
+        }
         AstData::Func(Function(name)) => {
             output += &format!(".globl {name}\n");
             output += &format!("{name}:\n");
@@ -37,12 +39,11 @@ fn generate(ast: &Ast, node: &AstNode) -> String {
     output
 }
 
-pub fn codegen(dbg: bool, input: Ast) -> Option<String> {
+pub fn codegen(input: Ast) -> Option<String> {
     let asm = generate(&input, input.first());
 
-    if dbg {
-        println!("asm: \n{asm}\n");
-    }
+    #[cfg(debug_assertions)]
+    println!("asm: \n{asm}\n");
 
     Some(asm)
 }

@@ -38,12 +38,10 @@ fn link<P: AsRef<Path>>(asm_name: P) -> Option<()> {
 }
 
 pub fn compile<P: AsRef<Path>>(src_name: P) -> Option<()> {
-    let dbg = false;
-
     let src = fs::read_to_string(&src_name).unwrap();
-    let tokens = lex(dbg, &src);
-    let ast = parse(dbg, tokens)?;
-    let asm = codegen(dbg, ast)?;
+    let tokens = lex(&src);
+    let ast = parse(tokens)?;
+    let asm = codegen(ast)?;
     let asm_name = write_asm(&src_name, &asm)?;
     link(asm_name)
 }
