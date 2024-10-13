@@ -19,13 +19,14 @@ pub enum TokenKind {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Token {
+pub struct Token<'a> {
     pub kind: TokenKind,
+    pub value: &'a str,
 }
 
-impl Token {
-    fn new(kind: TokenKind) -> Self {
-        Token { kind }
+impl<'a> Token<'a> {
+    fn new(kind: TokenKind, value: &'a str) -> Self {
+        Token { kind, value }
     }
 }
 
@@ -64,7 +65,7 @@ impl<'a> Lexer<'a> {
         c == '_' || c.is_alphanumeric()
     }
 
-    pub fn next(&mut self) -> Option<(Token, &'a str)> {
+    pub fn next_token(&mut self) -> Option<Token<'a>> {
         use TokenKind::*;
 
         let start = self.chars.as_str();
@@ -100,10 +101,10 @@ impl<'a> Lexer<'a> {
         let len = start.len() - end.len();
         let str = &start[..len];
 
-        Some((Token::new(kind), str))
+        Some(Token::new(kind, str))
     }
 
-    // pub fn peek(&self) -> Option<(Token, &str)> {
+    // pub fn peek_token(&self) -> Option<(Token, &str)> {
     //     let start = self.chars.as_str();
     //     let (token, _) = self.clone().next()?;
     //     let len = token.len;
@@ -111,12 +112,12 @@ impl<'a> Lexer<'a> {
     //     Some((token, &start[..len]))
     // }
 
-    pub fn into_iter(mut self) -> impl Iterator<Item = (Token, &'a str)> + 'a {
-        std::iter::from_fn(move || self.next())
+    pub fn into_iter(mut self) -> impl Iterator<Item = Token<'a>> + 'a {
+        std::iter::from_fn(move || self.next_token())
     }
 }
 
-pub fn lex(src: &str) -> Vec<(Token, &str)> {
+pub fn lex(src: &str) -> Vec<Token> {
     let tokens = Lexer::new(src).into_iter().collect::<Vec<_>>();
 
     #[cfg(debug_assertions)]

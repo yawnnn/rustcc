@@ -119,32 +119,24 @@ impl<'a> IntoIterator for &'a Ast {
 
 /// Moves through the tokens ignoring whitespace
 #[derive(Clone)]
-struct Cursor<'a>(Peekable<std::vec::IntoIter<(Token, &'a str)>>);
+struct Cursor<'a>(Peekable<std::vec::IntoIter<Token<'a>>>);
 
 impl<'a> Cursor<'a> {
-    fn new(tokens: Vec<(Token, &str)>) -> Cursor {
+    fn new(tokens: Vec<Token>) -> Cursor {
         Cursor(tokens.into_iter().peekable())
     }
 
-    fn next(&mut self) -> Option<(Token, &'a str)> {
+    fn next_token(&mut self) -> Option<Token> {
         loop {
             match self.0.next() {
-                Some((Token { kind: TokenKind::Whitespace, .. }, _)) => (),
+                Some(Token { kind: TokenKind::Whitespace, .. }) => (),
                 token_or_none => return token_or_none,
             }
         }
     }
 
-    // fn peek(&self) -> Option<(Token, &'a str)> {
-    //     self.clone().next()
-    // }
-
-    fn next_token(&mut self) -> Option<Token> {
-        Some(self.next()?.0)
-    }
-
     // fn peek_token(&self) -> Option<Token> {
-    //     self.clone().next_token()
+    //     self.clone().next()
     // }
 }
 
@@ -163,11 +155,11 @@ fn parse_term(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstK
 
 /// <exp> ::= <term> { ("+" | "-") <term> }
 fn parse_expression(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
-    let (token, str) = cursor.next()?;
-    
+    let token = cursor.next_token()?;
+
     match token {
-        Token { kind: TokenKind::Literal, .. } => {
-            let const_exp = Expression::Constant(str.parse::<i64>().ok()?);
+        Token { kind: TokenKind::Literal, value } => {
+            let const_exp = Expression::Constant(value.parse::<i64>().ok()?);
             let exp = AstData::Exp(const_exp);
             Some(ast.insert(parent, exp))
         }
@@ -195,8 +187,8 @@ fn parse_statement(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option
     let stmt = AstData::Stmt(Statement());
     let kstmt = ast.insert(parent, stmt);
 
-    let (_, str) = cursor.next()?;
-    if !matches!(str, "return") {
+    let token = cursor.next_token()?;
+    if !matches!(token.value, "return") {
         return None;
     }
 
@@ -212,14 +204,14 @@ fn parse_statement(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option
 
 /// <function> ::= "int" <id> "(" ")" "{" <statement> "}"
 fn parse_function(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
-    let (_, str) = cursor.next()?;
-    if !matches!(str, "int") {
+    let token = cursor.next_token()?;
+    if !matches!(token.value, "int") {
         return None;
     }
 
-    let (token, str) = cursor.next()?;
+    let token = cursor.next_token()?;
     let name = match token {
-        Token { kind: TokenKind::Ident, .. } => str.to_owned(),
+        Token { kind: TokenKind::Ident, value } => value.to_owned(),
         _ => return None,
     };
 
@@ -260,7 +252,7 @@ fn parse_program(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     Some(kprog)
 }
 
-pub fn parse(tokens: Vec<(Token, &str)>) -> Option<Ast> {
+pub fn parse(tokens: Vec<Token>) -> Option<Ast> {
     let mut ast = Ast::new();
     let mut cursor = Cursor::new(tokens);
 
