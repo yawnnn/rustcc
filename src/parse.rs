@@ -148,8 +148,23 @@ impl<'a> Cursor<'a> {
     // }
 }
 
+/// <factor> ::= "(" <exp> ")" | <unary_op> <factor> | <int>
+fn parse_factor(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
+    // the expression is a single integer (e.g. ~4)
+    // the expression is wrapped in parentheses (e.g. ~(1+1)), or
+    // the expression is itself a unary operation (e.g. ~!8, -~(2+2)).
+    todo!()
+}
+
+/// <term> ::= <factor> { ("*" | "/") <factor> }
+fn parse_term(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
+    todo!()
+}
+
+/// <exp> ::= <term> { ("+" | "-") <term> }
 fn parse_expression(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
     let (token, str) = cursor.next()?;
+    
     match token {
         Token { kind: TokenKind::Literal, .. } => {
             let const_exp = Expression::Constant(str.parse::<i64>().ok()?);
@@ -175,6 +190,7 @@ fn parse_expression(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Optio
     }
 }
 
+/// <statement> ::= "return" <exp> ";"
 fn parse_statement(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
     let stmt = AstData::Stmt(Statement());
     let kstmt = ast.insert(parent, stmt);
@@ -194,6 +210,7 @@ fn parse_statement(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option
     Some(kstmt)
 }
 
+/// <function> ::= "int" <id> "(" ")" "{" <statement> "}"
 fn parse_function(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
     let (_, str) = cursor.next()?;
     if !matches!(str, "int") {
@@ -231,6 +248,7 @@ fn parse_function(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<
     Some(kfunc)
 }
 
+/// <program> ::= <function>
 fn parse_program(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     let root = ast.root();
     let prog = AstData::Prog(Program());
