@@ -10,7 +10,7 @@ pub enum UnOpKind {
 }
 
 impl UnOpKind {
-    fn try_from(kind: &TokenKind) -> Option<Self> {
+    fn try_from(kind: TokenKind) -> Option<Self> {
         match kind {
             TokenKind::Minus => Some(Self::Negation),
             TokenKind::Tilde => Some(Self::BitwiseNot),
@@ -29,7 +29,7 @@ pub enum BinOpKind {
 }
 
 impl BinOpKind {
-    fn try_from(kind: &TokenKind) -> Option<Self> {
+    fn try_from(kind: TokenKind) -> Option<Self> {
         match kind {
             TokenKind::Plus => Some(Self::Addition),
             TokenKind::Minus => Some(Self::Subtraction),
@@ -155,31 +155,55 @@ fn parse_term(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstK
 
 /// <exp> ::= <term> { ("+" | "-") <term> }
 fn parse_expression(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
+    let exp = AstData::Exp(Expression::Constant(0));
+    let kexp = ast.insert(parent, exp);
+
+    let kterm = parse_term(ast, cursor, kexp)?;
+    ast.get_mut(kexp).children.push(kterm);
+
     let token = cursor.next_token()?;
 
-    match token {
-        Token { kind: TokenKind::Literal, value } => {
-            let const_exp = Expression::Constant(value.parse::<i64>().ok()?);
-            let exp = AstData::Exp(const_exp);
-            Some(ast.insert(parent, exp))
+    match BinOpKind::try_from(token.kind) {
+        Some(binop_kind) => {
+            let binop = Expression::BinOp(binop_kind);
+            // ast.get_mut(kexp).children.push(AstData::Exp(binop));
         }
-        Token { kind, .. } => {
-            let mut exp = None;
-
-            if let Some(unopkind) = UnOpKind::try_from(&kind) {
-                let unop_exp = Expression::UnOp(unopkind);
-                exp = Some(AstData::Exp(unop_exp));
-            } else if let Some(binopkind) = BinOpKind::try_from(&kind) {
-                let binop_exp = Expression::BinOp(binopkind);
-                exp = Some(AstData::Exp(binop_exp))
-            }
-
-            let kexp = ast.insert(parent, exp?);
-            let ksubexp = parse_expression(ast, cursor, kexp)?;
-            ast.get_mut(kexp).children.push(ksubexp);
-            Some(kexp)
-        }
+        _ => (),
     }
+    
+    // match token {
+    //     Token {kind: TokenKind::Plus, .. } =>  {
+    //     },
+    //     Token {kind: TokenKind::Minus, .. } => {
+    //     },
+    //     _ => (),
+    // }
+
+    // match token {
+    //     Token { kind: TokenKind::Literal, value } => {
+    //         let const_exp = Expression::Constant(value.parse::<i64>().ok()?);
+    //         let exp = AstData::Exp(const_exp);
+    //         Some(ast.insert(parent, exp))
+    //     }
+    //     Token { kind, .. } => {
+    //         let mut exp = None;
+
+    //         if let Some(unopkind) = UnOpKind::try_from(&kind) {
+    //             let unop_exp = Expression::UnOp(unopkind);
+    //             exp = Some(AstData::Exp(unop_exp));
+    //         } else if let Some(binopkind) = BinOpKind::try_from(&kind) {
+    //             let binop_exp = Expression::BinOp(binopkind);
+    //             exp = Some(AstData::Exp(binop_exp))
+    //         }
+
+    //         let kexp = ast.insert(parent, exp?);
+    //         let ksubexp = parse_expression(ast, cursor, kexp)?;
+    //         ast.get_mut(kexp).children.push(ksubexp);
+    //         Some(kexp)
+    //     }
+    // }
+
+    Some(kexp)
 }
 
 /// <statement> ::= "return" <exp> ";"
