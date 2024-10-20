@@ -2,7 +2,8 @@
 
 padding_dots=$(printf '%0.1s' "."{1..60})
 padlength=50
-cmp=./target/debug/rustcc.exe
+cmp_debug=./target/debug/rustcc.exe
+cmp_release=./target/release/rustcc.exe
 success_total=0
 failure_total=0
 
@@ -144,6 +145,13 @@ total_summary () {
 #     echo "EXAMPLE(test all): ./test_compiler.sh ./mycompiler"
 #     exit 1
 # fi
+
+cmp="$cmp_release"
+
+if [[ "$1" == "dbg" ]]; then
+  cmp="$cmp_debug"
+  shift
+fi
 
 if test 0 -lt $#; then
    testcases=("$@") # [1..-1] is testcases
