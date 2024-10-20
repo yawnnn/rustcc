@@ -26,13 +26,19 @@ fn link<P: AsRef<Path>>(asm_name: P) -> Option<()> {
     let exe_name = exe_name.to_str()?;
     let asm_name = asm_name.as_ref().to_str()?;
     let _ = fs::remove_file(exe_name); // delete if exists
-    let process = process::Command::new("gcc").args([asm_name, "-o", exe_name]).spawn().ok()?;
+    let process = process::Command::new("gcc")
+        .args([asm_name, "-o", exe_name])
+        .stdout(process::Stdio::piped())
+        .stderr(process::Stdio::piped())
+        .spawn()
+        .ok()?;
     let output = process.wait_with_output().ok()?;
     let stdout = String::from_utf8(output.stdout).ok()?;
     let stderr = String::from_utf8(output.stderr).ok()?;
     let _output = stdout + &stderr;
 
-    //println!("link: \n{output}\n");
+    #[cfg(debug_assertions)]
+    println!("\n### LINKING ###\n{_output}\n");
 
     Some(())
 }

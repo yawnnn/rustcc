@@ -121,7 +121,7 @@ pub fn lex(src: &str) -> Vec<Token> {
     let tokens = Lexer::new(src).into_iter().collect::<Vec<_>>();
 
     #[cfg(debug_assertions)]
-    println!("{tokens:?}");
+    println!("\n### TOKENS ###\n{tokens:#?}\n");
 
     tokens
 }
