@@ -17,64 +17,53 @@ fn generate(ast: &Ast, node: &AstNode) -> String {
             output += "ret\n"
         }
         AstData::Exp(Expression::Literal(Literal::Integer(integer))) => {
-            output = format!("movl ${integer}, %eax\n")
+            output = format!("mov ${integer}, %rax\n")
         }
         AstData::Exp(Expression::UnOp(kind)) => match kind {
             UnOpKind::Negation => {
                 output += &generate(ast, ast.get(node.children[0]));
-                output += "neg %eax\n";
+                output += "neg %rax\n";
             }
             UnOpKind::BitwiseNot => {
                 output += &generate(ast, ast.get(node.children[0]));
-                output += "not %eax\n";
+                output += "not %rax\n";
             }
             UnOpKind::LogicalNot => {
                 output += &generate(ast, ast.get(node.children[0]));
-                output += "cmpl $0, %eax\n";
-                output += "movl $0, %eax\n";
+                output += "cmp $0, %rax\n";
+                output += "mov $0, %rax\n";
                 output += "sete %al\n";
             }
         },
         AstData::Exp(Expression::BinOp(kind)) => match kind {
-            /*
-             * <CODE FOR e1 GOES HERE>
-             * push %eax ; save value of e1 on the stack
-             * <CODE FOR e2 GOES HERE>
-             * pop %ecx ; pop e1 from the stack into ecx
-             * addl %ecx, %eax ; add e1 to e2, save results in eax
-             * 
-             * output += "push %eax";
-             * output += "pop %ecx";
-             * output += "addl %ecx, %eax";
-             */
             BinOpKind::Addition => {
                 output += &generate(ast, ast.get(node.children[0]));
-                output += "push %eax\n";
+                output += "push %rax\n";
                 output += &generate(ast, ast.get(node.children[1]));
-                output += "pop %ecx\n";
-                output += "addl %ecx, %eax\n";
+                output += "pop %rcx\n";
+                output += "add %rcx, %rax\n";
             },
             BinOpKind::Subtraction => {
                 output += &generate(ast, ast.get(node.children[1]));
-                output += "push %eax\n";
+                output += "push %rax\n";
                 output += &generate(ast, ast.get(node.children[0]));
-                output += "pop %ecx\n";
-                output += "subl %ecx, %eax\n";
+                output += "pop %rcx\n";
+                output += "sub %rcx, %rax\n";
             },
             BinOpKind::Multiplication => {
                 output += &generate(ast, ast.get(node.children[0]));
-                output += "push %eax\n";
+                output += "push %rax\n";
                 output += &generate(ast, ast.get(node.children[1]));
-                output += "pop %ecx\n";
-                output += "imul %ecx, %eax\n";
+                output += "pop %rcx\n";
+                output += "imul %rcx, %rax\n";
             },
             BinOpKind::Division => {
                 output += &generate(ast, ast.get(node.children[1]));
-                output += "push %eax\n";
+                output += "push %rax\n";
                 output += &generate(ast, ast.get(node.children[0]));
                 output += "cdq\n";
-                output += "pop %ecx\n";
-                output += "idivl %ecx\n";
+                output += "pop %rcx\n";
+                output += "idiv %rcx\n";
             },
         }
         _ => todo!(),
