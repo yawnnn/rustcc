@@ -89,7 +89,6 @@ pub struct AstNode {
     pub pos: AstKey,
 
     pub data: AstData,
-    pub parent: AstKey,
     pub children: Vec<AstKey>,
 }
 
@@ -103,17 +102,13 @@ impl Ast {
         Ast { data: Vec::new() }
     }
 
-    fn root(&self) -> AstKey {
-        AstKey(0)
-    }
-
-    fn insert(&mut self, parent: AstKey, data: AstData) -> AstKey {
+    fn insert(&mut self, data: AstData) -> AstKey {
         let key = AstKey(self.data.len());
 
         #[cfg(debug_assertions)]
-        let node = AstNode { pos: key, data, parent, children: Vec::new() };
+        let node = AstNode { pos: key, data, children: Vec::new() };
         #[cfg(not(debug_assertions))]
-        let node = AstNode { data, parent, children: Vec::new() };
+        let node = AstNode { data, children: Vec::new() };
 
         self.data.push(node);
 
@@ -173,12 +168,12 @@ impl<'a> Cursor<'a> {
 }
 
 /// <factor> ::= "(" <exp> ")" | <unary_op> <factor> | <int>
-fn parse_factor(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
+fn parse_factor(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     let token = cursor.next_token()?;
 
     match token.kind {
         TokenKind::OpenParen => {
-            let kexp = parse_expression(ast, cursor, parent)?;
+            let kexp = parse_expression(ast, cursor)?;
 
             if !matches!(cursor.next_token()?.kind, TokenKind::CloseParen) {
                 return None;
@@ -189,15 +184,15 @@ fn parse_factor(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<As
         TokenKind::Literal => {
             let literal = Literal::Integer(token.value.parse::<i32>().ok()?);
             let literal = AstData::Exp(Expression::Literal(literal));
-            let kliteral = ast.insert(parent, literal);
+            let kliteral = ast.insert(literal);
 
             Some(kliteral)
         }
         kind => {
             let unop_kind = UnOpKind::try_from(kind)?;
             let unop = AstData::Exp(Expression::UnOp(unop_kind));
-            let kunop = ast.insert(parent, unop);
-            let koperand = parse_factor(ast, cursor, kunop)?;
+            let kunop = ast.insert(unop);
+            let koperand = parse_factor(ast, cursor)?;
             ast.get_mut(kunop).children.push(koperand);
 
             Some(kunop)
@@ -206,8 +201,8 @@ fn parse_factor(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<As
 }
 
 /// <term> ::= <factor> { ("*" | "/") <factor> }
-fn parse_term(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
-    let mut kterm = parse_factor(ast, cursor, parent)?;
+fn parse_term(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
+    let mut kterm = parse_factor(ast, cursor)?;
 
     while let Some(token) = cursor.peek_token() {
         let binop_kind = BinOpKind::try_from(token.kind);
@@ -215,17 +210,16 @@ fn parse_term(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstK
         if let Some(binop_kind @ (BinOpKind::Multiplication | BinOpKind::Division)) = binop_kind {
             cursor.next_token();
 
-            let kop2 = parse_factor(ast, cursor, parent)?;
+            let kop2 = parse_factor(ast, cursor)?;
 
             let binop = AstData::Exp(Expression::BinOp(binop_kind));
-            let kbinop = ast.insert(parent, binop);
+            let kbinop = ast.insert(binop);
 
             ast.get_mut(kbinop).children.push(kterm);
             ast.get_mut(kbinop).children.push(kop2);
 
             kterm = kbinop;
-        }
-        else {
+        } else {
             break;
         }
     }
@@ -234,8 +228,8 @@ fn parse_term(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstK
 }
 
 /// <exp> ::= <term> { ("+" | "-") <term> }
-fn parse_expression(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
-    let mut kexp = parse_term(ast, cursor, parent)?;
+fn parse_expression(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
+    let mut kexp = parse_term(ast, cursor)?;
 
     while let Some(token) = cursor.peek_token() {
         let binop_kind = BinOpKind::try_from(token.kind);
@@ -243,17 +237,16 @@ fn parse_expression(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Optio
         if let Some(binop_kind @ (BinOpKind::Addition | BinOpKind::Subtraction)) = binop_kind {
             cursor.next_token();
 
-            let kop2 = parse_term(ast, cursor, parent)?;
+            let kop2 = parse_term(ast, cursor)?;
 
             let binop = AstData::Exp(Expression::BinOp(binop_kind));
-            let kbinop = ast.insert(parent, binop);
+            let kbinop = ast.insert(binop);
 
             ast.get_mut(kbinop).children.push(kexp);
             ast.get_mut(kbinop).children.push(kop2);
 
             kexp = kbinop;
-        }
-        else {
+        } else {
             break;
         }
     }
@@ -262,16 +255,16 @@ fn parse_expression(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Optio
 }
 
 /// <statement> ::= "return" <exp> ";"
-fn parse_statement(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
+fn parse_statement(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     let stmt = AstData::Stmt(Statement::Return);
-    let kstmt = ast.insert(parent, stmt);
+    let kstmt = ast.insert(stmt);
 
     let token = cursor.next_token()?;
     if !matches!(token.value, "return") {
         return None;
     }
 
-    let kexp = parse_expression(ast, cursor, kstmt)?;
+    let kexp = parse_expression(ast, cursor)?;
 
     if !matches!(cursor.next_token()?.kind, TokenKind::Semicolon) {
         return None;
@@ -282,7 +275,7 @@ fn parse_statement(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option
 }
 
 /// <function> ::= "int" <id> "(" ")" "{" <statement> "}"
-fn parse_function(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<AstKey> {
+fn parse_function(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     let token = cursor.next_token()?;
     if !matches!(token.value, "int") {
         return None;
@@ -295,7 +288,7 @@ fn parse_function(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<
     };
 
     let func = AstData::Func(Function { name });
-    let kfunc = ast.insert(parent, func);
+    let kfunc = ast.insert(func);
 
     if !matches!(cursor.next_token()?.kind, TokenKind::OpenParen) {
         return None;
@@ -309,7 +302,7 @@ fn parse_function(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<
         return None;
     }
 
-    let kstmt = parse_statement(ast, cursor, kfunc)?;
+    let kstmt = parse_statement(ast, cursor)?;
 
     if !matches!(cursor.next_token()?.kind, TokenKind::CloseBrace) {
         return None;
@@ -321,11 +314,10 @@ fn parse_function(ast: &mut Ast, cursor: &mut Cursor, parent: AstKey) -> Option<
 
 /// <program> ::= <function>
 fn parse_program(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
-    let root = ast.root();
     let prog = AstData::Prog(Program());
-    let kprog = ast.insert(root, prog);
+    let kprog = ast.insert(prog);
 
-    let funck = parse_function(ast, cursor, kprog)?;
+    let funck = parse_function(ast, cursor)?;
 
     ast.get_mut(kprog).children.push(funck);
     Some(kprog)
