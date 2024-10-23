@@ -1,194 +1,200 @@
 import os
 import subprocess
 import glob
+import argparse
 
-PADDING_DOTS = "." * 60
-PAD_LENGTH = 50
-CMP_DEBUG = "./target/debug/rustcc.exe"
-CMP_RELEASE = "./target/release/rustcc.exe"
-SUCCESS_TOTAL = 0
-FAILURE_TOTAL = 0
+MAX_STAGES: int = 10
+MAX_PADDING: int = 50
+DEVNULL = subprocess.DEVNULL
 
 
-def print_test_name(test_name):
-    print(f"{test_name}", end="")
-    padding = PAD_LENGTH - len(test_name)
-    print(f"{PADDING_DOTS[:padding]}", end="")
+def print_stage_header(stage: int):
+    print("====================================================")
+    print(f"STAGE {stage}")
 
 
-def test_success():
-    global success
+def print_test_name(test_name: str):
+    padding = MAX_PADDING - len(test_name)
+    msg = test_name + "." * padding
+    print(msg, end="")
+
+
+def print_stage_summary(stage: int, successes: int, failures: int):
+    print(f"===================Stage {stage} Summary=================")
+    print(f"{successes} successes, {failures} failures")
+
+
+def print_total_summary(total_successes: int, total_failures: int):
+    print("===================TOTAL SUMMARY====================")
+    print(f"{total_successes} successes, {total_failures} failures")
+
+
+def print_success():
     print("OK")
-    success += 1
 
 
-def test_failure(gcc_exit_code, rustcc_exit_code, gcc_stdout, rustcc_out):
-    global fail
+def print_failure(correct_result: tuple[int, str], my_result: tuple[int, str]):
     print("FAIL")
-    print(gcc_exit_code, rustcc_exit_code, gcc_stdout, rustcc_out)
-    fail += 1
+    print(correct_result, my_result)
 
 
-def test_not_implemented():
-    print("NOT IMPLEMENTED")
+def run_correct(files: list[str], exe_name: str) -> tuple[int, str]:
+    build_cmd = ["gcc", "-w", "-o", exe_name] + files
+    subprocess.run(build_cmd, stdout=DEVNULL, stderr=DEVNULL)
 
-
-def run_program_rustcc(asm_name, exe_name):
+    run_cmd = [exe_name]
     try:
-        stdout = (
-            subprocess.check_output([f"./{exe_name}"], stderr=subprocess.DEVNULL)
-            .decode()
-            .strip()
-        )
-        exit_code = 0
+        stdout = subprocess.check_output(run_cmd, stderr=DEVNULL).decode().strip()
+        retcode = 0
     except subprocess.CalledProcessError as e:
         stdout = ""
-        exit_code = e.returncode
+        retcode = e.returncode
 
-    # Clean up generated files
+    if os.path.exists(exe_name):
+        os.remove(exe_name)
+
+    return (stdout, retcode)
+
+
+def run_mine(
+    build_cmd: list[str], files: list[str], asm_name: str, exe_name: str
+) -> tuple[int, tuple[int, str]]:
+    build_cmd = build_cmd + ["-o", exe_name] + files
+    build_retcode = subprocess.run(build_cmd, stdout=DEVNULL, stderr=DEVNULL).returncode
+
+    # if i created some files, then i force retcode okay
+    if os.path.exists(asm_name) or os.path.exists(exe_name):
+        build_retcode = 0
+
+    stdout = ""
+    retcode = 0
+
+    if build_retcode == 0:
+        run_cmd = [exe_name]
+        try:
+            stdout = subprocess.check_output(run_cmd, stderr=DEVNULL).decode().strip()
+        except subprocess.CalledProcessError as e:
+            retcode = e.returncode
+
     if os.path.exists(asm_name):
         os.remove(asm_name)
     if os.path.exists(exe_name):
         os.remove(exe_name)
 
-    return stdout, exit_code
+    return (build_retcode, (stdout, retcode))
 
 
-def run_program_gcc():
-    try:
-        stdout = (
-            subprocess.check_output(["./a.exe"], stderr=subprocess.DEVNULL)
-            .decode()
-            .strip()
-        )
-        exit_code = 0
-    except subprocess.CalledProcessError as e:
-        stdout = ""
-        exit_code = e.returncode
+def test_stage(stage: int, build_cmd: list[str]) -> tuple[int]:
+    successes = 0
+    failures = 0
 
-    # Remove 'a.exe' after execution
-    if os.path.exists("a.exe"):
-        os.remove("a.exe")
+    print_stage_header(stage)
 
-    return stdout, exit_code
-
-
-def compare_program_results(gcc_exit_code, rustcc_exit_code, gcc_stdout, rustcc_out):
-    if gcc_exit_code != rustcc_exit_code or gcc_stdout != rustcc_out:
-        test_failure(gcc_exit_code, rustcc_exit_code, gcc_stdout, rustcc_out)
-    else:
-        test_success()
-
-
-def test_stage(stage_num, cmp_program):
-    global success, fail
-    success = 0
-    fail = 0
-
-    print("====================================================")
-    print(f"STAGE {stage_num}")
     print("===================Valid Programs===================")
 
     # Valid programs
-    for prog in glob.glob(f"./input/stage_{stage_num}/valid/**/*.c", recursive=True):
-        base = os.path.splitext(prog)[0]
-        asm_name = f"{base}.s"
-        exe_name = f"{base}.exe"
-        test_name = os.path.basename(base)
+    src_pattern = os.path.join(".", "input", f"stage_{stage}", "valid", "**", "*.c")
 
-        # Compile and run GCC program
-        subprocess.run(
-            ["gcc", "-w", prog], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        gcc_stdout, gcc_exit_code = run_program_gcc()
+    for prog in glob.glob(src_pattern, recursive=True):
+        base_name = os.path.splitext(prog)[0]
+        asm_name = f"{base_name}.s"
+        exe_name = f"{base_name}.exe"
+        test_name = os.path.basename(base_name)
+        files = [prog]
 
         print_test_name(test_name)
 
-        # Compile and run our program
-        subprocess.run(
-            [cmp_program, prog], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        rustcc_out, rustcc_exit_code = run_program_rustcc(asm_name, exe_name)
+        correct_result = run_correct(files, exe_name)
+        (_, my_result) = run_mine(build_cmd, files, asm_name, exe_name)
 
-        compare_program_results(gcc_exit_code, rustcc_exit_code, gcc_stdout, rustcc_out)
+        if correct_result == my_result:
+            successes += 1
+            print_success()
+        else:
+            failures += 1
+            print_failure(correct_result, my_result)
 
     # Multi-file programs
-    for dir in glob.glob(f"input/stage_{stage_num}/valid_multifile/*"):
-        test_name = os.path.basename(dir)
+    src_pattern = os.path.join("input", f"stage_{stage}", "valid_multifile", "*")
 
-        # Compile and run GCC program
-        subprocess.run(
-            ["gcc", "-w"] + glob.glob(f"{dir}/*"),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        gcc_stdout, gcc_exit_code = run_program_gcc()
+    for dir in glob.glob(src_pattern):
+        test_name = os.path.basename(base_name)
+        asm_name = exe_name = test_name
+        files = glob.glob(f"{dir}/*")
 
-        # Compile and run our program
-        subprocess.run(
-            [cmp_program, "-o", test_name] + glob.glob(f"{dir}/*"),
-            stdout=subprocess.DEVNULL,
-        )
         print_test_name(test_name)
 
-        rustcc_out, rustcc_exit_code = run_program_rustcc(test_name, test_name)
+        correct_result = run_correct(files)
+        (_, my_result) = run_mine(build_cmd, files, asm_name, exe_name)
 
-        compare_program_results(gcc_exit_code, rustcc_exit_code, gcc_stdout, rustcc_out)
+        if correct_result == my_result:
+            successes += 1
+            print_success()
+        else:
+            failures += 1
+            print_failure(correct_result, my_result)
 
     print("===================Invalid Programs=================")
 
     # Invalid programs
-    for prog in glob.glob(f"input/stage_{stage_num}/invalid/**/*.c", recursive=True):
+    src_pattern = os.path.join("input", f"stage_{stage}", "invalid", "**", "*.c")
+
+    for prog in glob.glob(src_pattern, recursive=True):
         base = os.path.splitext(prog)[0]
         asm_name = f"{base}.s"
         exe_name = f"{base}.exe"
         test_name = os.path.basename(base)
+        files = [prog]
 
         print_test_name(test_name)
 
-        # Compile invalid program (expect failure)
-        status = subprocess.run(
-            [cmp_program, prog], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        ).returncode
+        (build_retcode, my_result) = run_mine(build_cmd, files, asm_name, exe_name)
 
-        # Ensure no executable or assembly was produced
-        if os.path.exists(exe_name) or os.path.exists(asm_name) or status == 0:
-            test_failure(None, status, None, None)
-            if os.path.exists(exe_name):
-                os.remove(exe_name)
-            if os.path.exists(asm_name):
-                os.remove(asm_name)
+        # Build failure is success
+        if build_retcode != 0:
+            successes += 1
+            print_success()
         else:
-            test_success()
+            failures += 1
+            print_failure((None, None), (build_retcode, None))
 
-    print(f"===================Stage {stage_num} Summary=================")
-    print(f"{success} successes, {fail} failures")
-    global SUCCESS_TOTAL, FAILURE_TOTAL
-    SUCCESS_TOTAL += success
-    FAILURE_TOTAL += fail
+    print_stage_summary(stage, successes, failures)
 
-
-def total_summary():
-    print("===================TOTAL SUMMARY====================")
-    print(f"{SUCCESS_TOTAL} successes, {FAILURE_TOTAL} failures")
+    return (successes, failures)
 
 
 if __name__ == "__main__":
-    import sys
+    parser = argparse.ArgumentParser(description="test rustcc")
+    parser.add_argument("-d", "--debug", action="store_true", help="debug mode")
+    parser.add_argument("-s", "--stage", nargs="*", help="stages")
+    parser.add_argument("-f", "--file", nargs="*", help="files")
+    args = parser.parse_args()
 
-    cmp_program = CMP_RELEASE
-    if len(sys.argv) > 1 and sys.argv[1] == "dbg":
-        cmp_program = CMP_DEBUG
-        sys.argv.pop(1)
+    total_successes = 0
+    total_failures = 0
 
-    if len(sys.argv) > 1:
-        stages = [int(arg) for arg in sys.argv[1:]]
-        for stage in stages:
-            test_stage(stage, cmp_program)
-        total_summary()
+    if args.debug:
+        build_mode = "--debug"
     else:
-        # Default number of stages to test
-        NUM_STAGES = 10
-        for stage in range(1, NUM_STAGES + 1):
-            test_stage(stage, cmp_program)
-        total_summary()
+        build_mode = "--release"
+
+    build_compiler_cmd = f"cargo build {build_mode}".split()
+
+    try:
+        proc = subprocess.run(build_compiler_cmd)
+    except Exception:
+        pass
+
+    if len(args.stage):
+        stages = [int(stage) for stage in args.stage]
+    else:
+        stages = list(range(MAX_STAGES))
+
+    build_cmd = f"cargo run {build_mode} -- ".split()
+
+    for stage in stages:
+        (successes, failures) = test_stage(stage, build_cmd)
+        total_successes += successes
+        total_failures += failures
+
+    print_total_summary(total_successes, total_failures)

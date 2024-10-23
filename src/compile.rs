@@ -5,26 +5,27 @@ use crate::parse::parse;
 use std::{
     fs::{self, File},
     io::Write,
-    path::{Path, PathBuf},
+    path::Path,
     process,
 };
 
-fn write_asm<P: AsRef<Path>>(src_name: P, input: &str) -> Option<PathBuf> {
-    let asm_name = src_name.as_ref().with_extension("s");
+fn write_asm<P: AsRef<Path>>(exe_name: P, input: &str) -> Option<()> {
+    let asm_name = exe_name.as_ref().with_extension("s");
     let _ = fs::remove_file(&asm_name); // delete if exists
     let mut file = File::create(&asm_name).ok()?;
     write!(file, "{input}").ok()?;
 
-    Some(asm_name)
+    Some(())
 }
 
-fn link<P: AsRef<Path>>(asm_name: P) -> Option<()> {
+fn link<P: AsRef<Path>>(exe_name: P) -> Option<()> {
     // process::Command::new().args accepts IntoIterator<AsRef<OsStr>>
     // but it doesn't like it when i pass a mix of different types, all individually ok.
     // so i convert them all to_str, since i have "-o"
-    let exe_name = asm_name.as_ref().with_extension("");
+    let exe_name = exe_name.as_ref();
+    let asm_name = exe_name.with_extension("s");
     let exe_name = exe_name.to_str()?;
-    let asm_name = asm_name.as_ref().to_str()?;
+    let asm_name = asm_name.to_str()?;
     let _ = fs::remove_file(exe_name); // delete if exists
     let process = process::Command::new("gcc")
         .args([asm_name, "-o", exe_name])
@@ -43,11 +44,11 @@ fn link<P: AsRef<Path>>(asm_name: P) -> Option<()> {
     Some(())
 }
 
-pub fn compile<P: AsRef<Path>>(src_name: P) -> Option<()> {
+pub fn compile<P: AsRef<Path>>(exe_name: P, src_name: P) -> Option<()> {
     let src = fs::read_to_string(&src_name).unwrap();
     let tokens = lex(&src);
     let ast = parse(tokens)?;
     let asm = codegen(ast)?;
-    let asm_name = write_asm(&src_name, &asm)?;
-    link(asm_name)
+    write_asm(&exe_name, &asm)?;
+    link(&exe_name)
 }

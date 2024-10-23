@@ -9,9 +9,12 @@ use std::env;
 
 fn main() -> Result<(), ()> {
     let args = env::args().collect::<Vec<_>>();
+    let args = args.iter().map(String::as_str).collect::<Vec<_>>();
 
-    match args.len() {
-        2 => compile(&args[1]).ok_or(()),
+    match args.as_slice() {
+        [_, "-o", exe_name, files @ ..] => {
+            compile(exe_name, &files[0]).ok_or(())
+        },
         _ => Err(()),
     }
 }
