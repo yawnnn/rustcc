@@ -61,7 +61,7 @@ fn generate(ast: &Ast, node: &AstNode) -> String {
                 output += &generate(ast, ast.get(node.children[1]));
                 output += "push %rax\n";
                 output += &generate(ast, ast.get(node.children[0]));
-                output += "cdq\n";
+                output += "cqo\n";
                 output += "pop %rcx\n";
                 output += "idiv %rcx\n";
             },
