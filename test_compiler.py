@@ -37,19 +37,14 @@ def print_failure(correct_result: tuple[int, str], my_result: tuple[int, str]):
     print(correct_result, my_result)
 
 
-def run_correct(files: list[str], exe_name: str) -> tuple[int, str]:
-    build_cmd = ["gcc", "-w", "-o", exe_name] + files
+def run_correct(files: list[str], out_name: str, exe_name: str) -> tuple[int, str]:
+    build_cmd = ["gcc", "-w", "-o", out_name] + files
     subprocess.run(build_cmd, stdout=subprocess.DEVNULL)
 
     run_cmd = [exe_name]
-    try:
-        stdout = (
-            subprocess.check_output(run_cmd, stderr=subprocess.DEVNULL).decode().strip()
-        )
-        retcode = 0
-    except subprocess.CalledProcessError as e:
-        stdout = ""
-        retcode = e.returncode
+    proc = subprocess.run(run_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    stdout = proc.stdout.decode().strip()
+    retcode = proc.returncode
 
     if os.path.exists(exe_name):
         os.remove(exe_name)
@@ -58,9 +53,9 @@ def run_correct(files: list[str], exe_name: str) -> tuple[int, str]:
 
 
 def run_mine(
-    build_mode: str, files: list[str], asm_name: str, exe_name: str
+    build_mode: str, files: list[str], asm_name: str, out_name: str, exe_name: str
 ) -> tuple[int, tuple[int, str]]:
-    build_cmd = f"cargo run {build_mode} --".split() + ["-o", exe_name] + files
+    build_cmd = f"cargo run {build_mode} --".split() + ["-o", out_name] + files
     # print("\n{}\n".format(" ".join(build_cmd)))
     build_retcode = subprocess.run(build_cmd, stderr=subprocess.DEVNULL).returncode
 
@@ -68,15 +63,14 @@ def run_mine(
     if os.path.exists(asm_name) or os.path.exists(exe_name):
         build_retcode = 0
 
-    stdout = ""
-    retcode = 0
-
     if build_retcode == 0:
         run_cmd = [exe_name]
-        try:
-            stdout = subprocess.check_output(run_cmd).decode().strip()
-        except subprocess.CalledProcessError as e:
-            retcode = e.returncode
+        proc = subprocess.run(run_cmd, stdout=subprocess.PIPE)
+        stdout = proc.stdout.decode().strip()
+        retcode = proc.returncode
+    else:
+        stdout = None
+        retcode = None
 
     if os.path.exists(asm_name):
         os.remove(asm_name)
@@ -103,9 +97,6 @@ def expand_into_possible_files(
 def get_stage_files(
     possible_files: list[str], valid_dir: str, multifile_dir: str, invalid_dir: str
 ) -> tuple[list[str], list[str], list[str]]:
-    def callback(f):
-        return f in possible_files
-
     valid_prog_pattern = os.path.join(valid_dir, "**", "*.c")
     valid_files = glob.glob(valid_prog_pattern, recursive=True)
 
@@ -115,10 +106,13 @@ def get_stage_files(
     invalid_prog_pattern = os.path.join(invalid_dir, "**", "*.c")
     invalid_files = glob.glob(invalid_prog_pattern, recursive=True)
 
+    def filter_possible(files: list[str]) -> list[str]:
+        return list(filter(lambda f: f in possible_files, files))
+
     if len(possible_files):
-        valid_files = list(filter(callback, valid_files))
-        multifile_dirs = list(filter(callback, multifile_dirs))
-        invalid_files = list(filter(callback, invalid_files))
+        valid_files = filter_possible(valid_files)
+        multifile_dirs = filter_possible(multifile_dirs)
+        invalid_files = filter_possible(invalid_files)
 
     return (valid_files, multifile_dirs, invalid_files)
 
@@ -152,16 +146,16 @@ def test_stage(stage: int, build_mode: str, input_files: list[str]) -> tuple[int
         print("===================Valid Programs===================")
 
     for prog in valid_files:
-        base_name = os.path.splitext(prog)[0]
-        asm_name = f"{base_name}.s"
-        exe_name = f"{base_name}.exe"
-        test_name = os.path.basename(base_name)
+        out_name = os.path.splitext(prog)[0]
+        asm_name = f"{out_name}.s"
+        exe_name = f"{out_name}.exe"
+        test_name = os.path.basename(out_name)
         files = [prog]
 
         print_test_name(test_name)
 
-        correct_result = run_correct(files, exe_name)
-        (_, my_result) = run_mine(build_mode, files, asm_name, exe_name)
+        correct_result = run_correct(files, out_name, exe_name)
+        (_, my_result) = run_mine(build_mode, files, asm_name, out_name, exe_name)
 
         if correct_result == my_result:
             successes += 1
@@ -172,14 +166,14 @@ def test_stage(stage: int, build_mode: str, input_files: list[str]) -> tuple[int
 
     # Multi-file programs
     for dir in multifile_dirs:
-        test_name = os.path.basename(base_name)
-        asm_name = exe_name = test_name
+        out_name = os.path.basename(dir)
+        asm_name = exe_name = test_name = out_name
         files = glob.glob(f"{dir}/*")
 
         print_test_name(test_name)
 
-        correct_result = run_correct(files)
-        (_, my_result) = run_mine(build_mode, files, asm_name, exe_name)
+        correct_result = run_correct(files, out_name, exe_name)
+        (_, my_result) = run_mine(build_mode, files, asm_name, out_name, exe_name)
 
         if correct_result == my_result:
             successes += 1
@@ -193,15 +187,17 @@ def test_stage(stage: int, build_mode: str, input_files: list[str]) -> tuple[int
         print("===================Invalid Programs=================")
 
     for prog in invalid_files:
-        base = os.path.splitext(prog)[0]
-        asm_name = f"{base}.s"
-        exe_name = f"{base}.exe"
-        test_name = os.path.basename(base)
+        out_name = os.path.splitext(prog)[0]
+        asm_name = f"{out_name}.s"
+        exe_name = f"{out_name}.exe"
+        test_name = os.path.basename(out_name)
         files = [prog]
 
         print_test_name(test_name)
 
-        (build_retcode, my_result) = run_mine(build_mode, files, asm_name, exe_name)
+        (build_retcode, my_result) = run_mine(
+            build_mode, files, asm_name, out_name, exe_name
+        )
 
         # Build failure is success
         if build_retcode != 0:
