@@ -227,12 +227,12 @@ if __name__ == "__main__":
     else:
         build_mode = "--profile release"
 
-    build_compiler_cmd = f"cargo build {build_mode}".split()
+    build_cc_cmd = f"cargo build {build_mode}".split()
 
-    try:
-        proc = subprocess.run(build_compiler_cmd, stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
+    proc = subprocess.run(build_cc_cmd, stderr=subprocess.PIPE)
+    if proc.returncode:
+        print(proc.stderr.decode().strip())
+        exit()
 
     if args.stages and len(args.stages):
         stages = [int(stage) for stage in args.stages]
