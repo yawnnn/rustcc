@@ -29,10 +29,16 @@ pub enum BinOpKind {
 }
 
 impl BinOpKind {
-    fn try_from(kind: TokenKind) -> Option<Self> {
+    fn try_from_add_sub(kind: TokenKind) -> Option<Self> {
         match kind {
             TokenKind::Plus => Some(Self::Addition),
             TokenKind::Minus => Some(Self::Subtraction),
+            _ => None,
+        }
+    }
+
+    fn try_from_mul_div(kind: TokenKind) -> Option<Self> {
+        match kind {
             TokenKind::Star => Some(Self::Multiplication),
             TokenKind::Slash => Some(Self::Division),
             _ => None,
@@ -219,58 +225,37 @@ fn parse_factor(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     }
 }
 
-/// <term> ::= <factor> { ("*" | "/") <factor> }
-fn parse_term(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
-    let mut kterm = parse_factor(ast, cursor)?;
+type ParseBinOperandFn = fn(&mut Ast, &mut Cursor) -> Option<AstKey>;
+type BinOpTokenFn = fn(TokenKind) -> Option<BinOpKind>;
 
-    while let Some(token) = cursor.peek() {
-        let binop_kind = BinOpKind::try_from(token.kind);
+fn parse_binop(ast: &mut Ast, cursor: &mut Cursor, parse_operand: ParseBinOperandFn, binop_token: BinOpTokenFn) -> Option<AstKey> {
+    let mut kbinop = parse_operand(ast, cursor)?;
 
-        if let Some(binop_kind @ (BinOpKind::Multiplication | BinOpKind::Division)) = binop_kind {
-            cursor.next();
+    while let Some(binop_kind) = binop_token(cursor.peek()?.kind) {
+        cursor.next();
 
-            let kop2 = parse_factor(ast, cursor)?;
+        let kop2 = parse_operand(ast, cursor)?;
 
-            let binop = AstData::Exp(Expression::BinOp(binop_kind));
-            let kbinop = ast.insert(binop);
+        let binop = AstData::Exp(Expression::BinOp(binop_kind));
+        let knew_binop = ast.insert(binop);
 
-            ast.get_mut(kbinop).children.push(kterm);
-            ast.get_mut(kbinop).children.push(kop2);
+        ast.get_mut(knew_binop).children.push(kbinop);
+        ast.get_mut(knew_binop).children.push(kop2);
 
-            kterm = kbinop;
-        } else {
-            break;
-        }
+        kbinop = knew_binop;
     }
 
-    Some(kterm)
+    Some(kbinop)
+}
+
+/// <term> ::= <factor> { ("*" | "/") <factor> }
+fn parse_term(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
+    parse_binop(ast, cursor, parse_factor, BinOpKind::try_from_mul_div)
 }
 
 /// <exp> ::= <term> { ("+" | "-") <term> }
 fn parse_expression(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
-    let mut kexp = parse_term(ast, cursor)?;
-
-    while let Some(token) = cursor.peek() {
-        let binop_kind = BinOpKind::try_from(token.kind);
-
-        if let Some(binop_kind @ (BinOpKind::Addition | BinOpKind::Subtraction)) = binop_kind {
-            cursor.next();
-
-            let kop2 = parse_term(ast, cursor)?;
-
-            let binop = AstData::Exp(Expression::BinOp(binop_kind));
-            let kbinop = ast.insert(binop);
-
-            ast.get_mut(kbinop).children.push(kexp);
-            ast.get_mut(kbinop).children.push(kop2);
-
-            kexp = kbinop;
-        } else {
-            break;
-        }
-    }
-
-    Some(kexp)
+    parse_binop(ast, cursor, parse_term, BinOpKind::try_from_add_sub)
 }
 
 /// <statement> ::= "return" <exp> ";"
