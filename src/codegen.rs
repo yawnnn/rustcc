@@ -73,7 +73,7 @@ fn generate(ast: &Ast, node: &AstNode) -> String {
 }
 
 pub fn codegen(input: Ast) -> Option<String> {
-    let asm = generate(&input, input.first());
+    let asm = generate(&input, input.get_root());
 
     #[cfg(debug_assertions)]
     println!("\n### ASM ###\n{asm}\n");

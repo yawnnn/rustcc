@@ -100,21 +100,22 @@ pub struct AstNode {
 
 #[derive(Debug)]
 pub struct Ast {
+    root: AstKey,
     data: Vec<AstNode>,
 }
 
 impl Ast {
     fn new() -> Ast {
-        Ast { data: Vec::new() }
+        Ast { root: AstKey(0), data: Vec::new() }
     }
 
-    fn insert(&mut self, data: AstData) -> AstKey {
+    fn insert(&mut self, data: AstData, children: Vec<AstKey>) -> AstKey {
         let key = AstKey(self.data.len());
 
         #[cfg(debug_assertions)]
-        let node = AstNode { pos: key, data, children: Vec::new() };
+        let node = AstNode { pos: key, data, children };
         #[cfg(not(debug_assertions))]
-        let node = AstNode { data, children: Vec::new() };
+        let node = AstNode { data, children };
 
         self.data.push(node);
 
@@ -125,12 +126,8 @@ impl Ast {
         &self.data[key.0]
     }
 
-    fn get_mut(&mut self, key: AstKey) -> &mut AstNode {
-        &mut self.data[key.0]
-    }
-
-    pub fn first(&self) -> &AstNode {
-        self.get(AstKey(0))
+    pub fn get_root(&self) -> &AstNode {
+        self.get(self.root)
     }
 }
 
@@ -211,16 +208,14 @@ fn parse_factor(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
             let literal = Literal::Integer(token.value.parse::<i32>().ok()?);
             let literal = AstData::Exp(Expression::Literal(literal));
 
-            Some(ast.insert(literal))
+            Some(ast.insert(literal, Vec::new()))
         }
         kind => {
             let unop_kind = UnOpKind::try_from(kind)?;
-            let unop = AstData::Exp(Expression::UnOp(unop_kind));
-            let kunop = ast.insert(unop);
             let koperand = parse_factor(ast, cursor)?;
-            ast.get_mut(kunop).children.push(koperand);
+            let unop = AstData::Exp(Expression::UnOp(unop_kind));
 
-            Some(kunop)
+            Some(ast.insert(unop, vec![koperand]))
         }
     }
 }
@@ -237,12 +232,7 @@ fn parse_binop(ast: &mut Ast, cursor: &mut Cursor, parse_operand: ParseBinOperan
         let kop2 = parse_operand(ast, cursor)?;
 
         let binop = AstData::Exp(Expression::BinOp(binop_kind));
-        let knew_binop = ast.insert(binop);
-
-        ast.get_mut(knew_binop).children.push(kbinop);
-        ast.get_mut(knew_binop).children.push(kop2);
-
-        kbinop = knew_binop;
+        kbinop = ast.insert(binop, vec![kbinop, kop2]);
     }
 
     Some(kbinop)
@@ -260,17 +250,15 @@ fn parse_expression(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
 
 /// <statement> ::= "return" <exp> ";"
 fn parse_statement(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
-    let stmt = AstData::Stmt(Statement::Return);
-    let kstmt = ast.insert(stmt);
-
     match_value!(cursor.next()?, "return")?;
 
     let kexp = parse_expression(ast, cursor)?;
 
     match_token!(cursor.next()?, TokenKind::Semicolon)?;
 
-    ast.get_mut(kstmt).children.push(kexp);
-    Some(kstmt)
+    let stmt = AstData::Stmt(Statement::Return);
+    
+    Some(ast.insert(stmt, vec![kexp]))
 }
 
 /// <function> ::= "int" <id> "(" ")" "{" <statement> "}"
@@ -280,9 +268,6 @@ fn parse_function(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     let token = match_token!(cursor.next()?, TokenKind::Ident)?;
     let name = token.value.to_owned();
 
-    let func = AstData::Func(Function { name });
-    let kfunc = ast.insert(func);
-
     match_token!(cursor.next()?, TokenKind::OpenParen)?;
     match_token!(cursor.next()?, TokenKind::CloseParen)?;
     match_token!(cursor.next()?, TokenKind::OpenBrace)?;
@@ -291,26 +276,25 @@ fn parse_function(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
 
     match_token!(cursor.next()?, TokenKind::CloseBrace)?;
 
-    ast.get_mut(kfunc).children.push(kstmt);
-    Some(kfunc)
+    let func = AstData::Func(Function { name });
+
+    Some(ast.insert(func, vec![kstmt]))
 }
 
 /// <program> ::= <function>
 fn parse_program(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
+    let kfunc = parse_function(ast, cursor)?;
     let prog = AstData::Prog(Program());
-    let kprog = ast.insert(prog);
 
-    let funck = parse_function(ast, cursor)?;
-
-    ast.get_mut(kprog).children.push(funck);
-    Some(kprog)
+    Some(ast.insert(prog, vec![kfunc]))
 }
 
 pub fn parse(tokens: Vec<Token>) -> Option<Ast> {
     let mut ast = Ast::new();
     let mut cursor = Cursor::new(tokens);
 
-    parse_program(&mut ast, &mut cursor)?;
+    let kprog = parse_program(&mut ast, &mut cursor)?;
+    ast.root = kprog;
 
     #[cfg(debug_assertions)]
     println!("\n### AST ###\n{ast:#?}\n");
