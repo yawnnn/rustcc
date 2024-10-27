@@ -1,5 +1,31 @@
 use crate::parse::*;
 
+fn gen_logical_cmp(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
+    let mut output = String::new();
+
+    output += &generate(ast, ast.get(node.children[0]));
+    output += "push %rax\n";
+    output += &generate(ast, ast.get(node.children[1]));
+    output += "pop %rcx\n";
+    output += "cmpl %rax, %rcx\n";
+    output += "mov $0, %rax\n";
+
+    let set_instr = match kind {
+        BinOpKind::LogicalEq => "sete",
+        BinOpKind::LogicalNotEq => "setne",
+        BinOpKind::Lt => "setl",
+        BinOpKind::LtEq => "setle",
+        BinOpKind::Gt => "setg",
+        BinOpKind::GtEq => "setge",
+        _ => unreachable!(),
+    };
+
+    output += &format!("{set_instr} %al");
+
+    output
+}
+
+/// TODO --- extract the 64bit vs 32bit logic/operators out
 fn generate(ast: &Ast, node: &AstNode) -> String {
     let mut output = String::new();
 
@@ -42,21 +68,21 @@ fn generate(ast: &Ast, node: &AstNode) -> String {
                 output += &generate(ast, ast.get(node.children[1]));
                 output += "pop %rcx\n";
                 output += "add %rcx, %rax\n";
-            },
+            }
             BinOpKind::Subtraction => {
                 output += &generate(ast, ast.get(node.children[1]));
                 output += "push %rax\n";
                 output += &generate(ast, ast.get(node.children[0]));
                 output += "pop %rcx\n";
                 output += "sub %rcx, %rax\n";
-            },
+            }
             BinOpKind::Multiplication => {
                 output += &generate(ast, ast.get(node.children[0]));
                 output += "push %rax\n";
                 output += &generate(ast, ast.get(node.children[1]));
                 output += "pop %rcx\n";
                 output += "imul %rcx, %rax\n";
-            },
+            }
             BinOpKind::Division => {
                 output += &generate(ast, ast.get(node.children[1]));
                 output += "push %rax\n";
@@ -64,8 +90,15 @@ fn generate(ast: &Ast, node: &AstNode) -> String {
                 output += "cqo\n";
                 output += "pop %rcx\n";
                 output += "idiv %rcx\n";
-            },
-        }
+            }
+            BinOpKind::LogicalEq
+            | BinOpKind::LogicalNotEq
+            | BinOpKind::Lt
+            | BinOpKind::LtEq
+            | BinOpKind::Gt
+            | BinOpKind::GtEq => output += &gen_logical_cmp(ast, node, kind),
+            _ => todo!(),
+        },
         _ => todo!(),
     }
 
