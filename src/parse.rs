@@ -1,4 +1,4 @@
-use std::{fmt, iter::Peekable};
+use std::fmt;
 
 use crate::lex::*;
 
@@ -147,6 +147,7 @@ impl fmt::Debug for AstKey {
 /// TODO --- remove children, embed number of children in enum
 #[derive(Debug)]
 pub struct AstNode {
+    #[allow(dead_code)]
     #[cfg(debug_assertions)]
     pub pos: AstKey,
 
