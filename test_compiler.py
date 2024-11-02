@@ -33,8 +33,7 @@ def print_success():
 
 
 def print_failure(correct_result: tuple[int, str], my_result: tuple[int, str]):
-    print("FAIL")
-    print(correct_result, my_result)
+    print(f"FAIL => correct: {correct_result}, mine: {my_result}")
 
 
 def run_correct(files: list[str], out_name: str, exe_name: str) -> tuple[int, str]:

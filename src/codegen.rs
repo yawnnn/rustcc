@@ -30,17 +30,17 @@ fn gen_binop_aritmethic(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
     let mut output = String::new();
 
     #[rustfmt::skip]
-    let (knode1, knode2, istr, div) = match kind {
-        BinOpKind::Addition =>       (node.children[0], node.children[1], "add" , false),
-        BinOpKind::Subtraction =>    (node.children[0], node.children[1], "sub" , false),
-        BinOpKind::Multiplication => (node.children[1], node.children[0], "sub" , false),
-        BinOpKind::Division =>       (node.children[1], node.children[0], "idiv", true ),
+    let (child1, child2, istr, div) = match kind {
+        BinOpKind::Addition =>       (0, 1, "add" , false),
+        BinOpKind::Subtraction =>    (1, 0, "sub" , false),
+        BinOpKind::Multiplication => (0, 1, "imul", false),
+        BinOpKind::Division =>       (1, 0, "idiv", true ),
         _ => unreachable!(),
     };
 
-    output += &generate(ast, ast.get(knode1));
+    output += &generate(ast, ast.get(node.children[child1]));
     output += "push %rax\n";
-    output += &generate(ast, ast.get(knode2));
+    output += &generate(ast, ast.get(node.children[child2]));
 
     if div {
         output += "cqo\n";
