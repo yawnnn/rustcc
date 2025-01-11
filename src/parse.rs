@@ -163,10 +163,10 @@ impl BinOpKind {
                     Some(TokenKind::And) => {
                         *cursor = bak;
                         None
-                    },
+                    }
                     _ => Some(Self::BitwiseAnd),
                 }
-            },
+            }
             _ => {
                 *cursor = bak;
                 None
@@ -186,10 +186,10 @@ impl BinOpKind {
                     Some(TokenKind::Or) => {
                         *cursor = bak;
                         None
-                    },
+                    }
                     _ => Some(Self::BitwiseOr),
                 }
-            },
+            }
             _ => {
                 *cursor = bak;
                 None
@@ -233,28 +233,20 @@ pub enum Literal {
 
 #[derive(Debug)]
 pub enum Expression {
-    BinOp(BinOpKind),
-    UnOp(UnOpKind),
+    BinOp(BinOpKind, AstKey, AstKey),
+    UnOp(UnOpKind, AstKey),
     Literal(Literal),
 }
 
 #[derive(Debug)]
 pub enum Statement {
-    Return,
+    Return(AstKey),
 }
-
-#[derive(Debug)]
-pub struct Function {
-    pub name: String,
-}
-
-#[derive(Debug)]
-pub struct Program();
 
 #[derive(Debug)]
 pub enum AstData {
-    Prog(Program),
-    Func(Function),
+    Prog(AstKey),
+    Func { name: String, statements: Vec<AstKey> },
     Stmt(Statement),
     Exp(Expression),
 }
@@ -275,7 +267,6 @@ pub struct AstNode {
     pub pos: AstKey,
 
     pub data: AstData,
-    pub children: Vec<AstKey>,
 }
 
 #[derive(Debug)]
@@ -289,13 +280,13 @@ impl Ast {
         Ast { root: AstKey(0), data: Vec::new() }
     }
 
-    fn insert(&mut self, data: AstData, children: Vec<AstKey>) -> AstKey {
+    fn insert(&mut self, data: AstData) -> AstKey {
         let key = AstKey(self.data.len());
 
         #[cfg(debug_assertions)]
-        let node = AstNode { pos: key, data, children };
+        let node = AstNode { pos: key, data };
         #[cfg(not(debug_assertions))]
-        let node = AstNode { data, children };
+        let node = AstNode { data };
 
         self.data.push(node);
 
@@ -366,8 +357,8 @@ fn parse_binop(
     while let Some(binop_kind) = binop_token(cursor) {
         let kop2 = parse_operand(ast, cursor).unwrap();
 
-        let binop = AstData::Exp(Expression::BinOp(binop_kind));
-        kbinop = ast.insert(binop, vec![kbinop, kop2]);
+        let binop = AstData::Exp(Expression::BinOp(binop_kind, kbinop, kop2));
+        kbinop = ast.insert(binop);
     }
 
     Some(kbinop)
@@ -392,14 +383,14 @@ fn parse_factor(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
             let literal = Literal::Integer(token.value.parse::<i32>().ok().unwrap());
             let literal = AstData::Exp(Expression::Literal(literal));
 
-            Some(ast.insert(literal, Vec::new()))
+            Some(ast.insert(literal))
         }
         kind => {
             let unop_kind = UnOpKind::try_from(kind).unwrap();
             let koperand = parse_factor(ast, cursor).unwrap();
-            let unop = AstData::Exp(Expression::UnOp(unop_kind));
+            let unop = AstData::Exp(Expression::UnOp(unop_kind, koperand));
 
-            Some(ast.insert(unop, vec![koperand]))
+            Some(ast.insert(unop))
         }
     }
 }
@@ -467,9 +458,9 @@ fn parse_statement(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
 
     match_token!(cursor.next().unwrap(), TokenKind::Semicolon).unwrap();
 
-    let stmt = AstData::Stmt(Statement::Return);
+    let stmt = AstData::Stmt(Statement::Return(kexp));
 
-    Some(ast.insert(stmt, vec![kexp]))
+    Some(ast.insert(stmt))
 }
 
 /// <function> ::= "int" <id> "(" ")" "{" <statement> "}"
@@ -487,20 +478,19 @@ fn parse_function(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
 
     match_token!(cursor.next().unwrap(), TokenKind::CloseBrace).unwrap();
 
-    let func = AstData::Func(Function { name });
+    let func = AstData::Func{ name, statements: vec![kstmt] };
 
-    Some(ast.insert(func, vec![kstmt]))
+    Some(ast.insert(func))
 }
 
 /// <program> ::= <function>
 fn parse_program(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     let kfunc = parse_function(ast, cursor).unwrap();
-    let prog = AstData::Prog(Program());
+    let prog = AstData::Prog(kfunc);
 
-    Some(ast.insert(prog, vec![kfunc]))
+    Some(ast.insert(prog))
 }
 
-/// TODO: remove children from AstNode, embed number of children in enum
 /// TODO: streamline operator precendece
 pub fn parse(tokens: Vec<Token>) -> Option<Ast> {
     let mut ast = Ast::new();

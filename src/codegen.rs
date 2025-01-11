@@ -1,6 +1,47 @@
-use std::cell::Cell;
+use std::{cell::Cell, ops, fmt};
 
 use crate::parse::*;
+
+struct Assembly(String);
+
+impl Assembly {
+    fn new() -> Assembly {
+        Assembly(String::new())
+    }
+
+    fn from(s: String) -> Assembly {
+        let mut asm = Self::new();
+        asm += s;
+        asm
+    }
+
+    fn push<S: ops::Deref<Target = str>>(&mut self, command: S) {
+        let command = &command;
+        self.0.reserve(command.len() + 1);
+        self.0.push_str(command);
+        self.0.push('\n');
+    }
+}
+
+impl ops::Deref for Assembly {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<S: ops::Deref<Target = str>> ops::AddAssign<S> for Assembly {
+    fn add_assign(&mut self, command: S) {
+        self.push(command);
+    }
+}
+
+impl fmt::Display for Assembly {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// generate a unique label
 fn gen_unique_label() -> String {
@@ -27,34 +68,34 @@ fn gen_unique_label() -> String {
 /// - `BinOpKind::Multiplication`
 /// - `BinOpKind::Division`
 /// - `BinOpKind::Modulo`
-fn gen_binop_aritmethic(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
-    let mut output = String::new();
+fn gen_binop_aritmethic(ast: &Ast, kind: &BinOpKind, op1: AstKey, op2: AstKey) -> Assembly {
+    let mut output = Assembly::new();
 
     #[rustfmt::skip]
-    let (child1, child2, istr, div, remainder) = match kind {
-        BinOpKind::Addition =>       (0, 1, "add" , false, false),
-        BinOpKind::Subtraction =>    (1, 0, "sub" , false, false),
-        BinOpKind::Multiplication => (0, 1, "imul", false, false),
-        BinOpKind::Division =>       (1, 0, "idiv", true , false),
-        BinOpKind::Modulo =>         (1, 0, "idiv", true , true ),
+    let (op1, op2, istr, div, remainder) = match kind {
+        BinOpKind::Addition =>       (op1, op2, "add" , false, false),
+        BinOpKind::Subtraction =>    (op2, op1, "sub" , false, false),
+        BinOpKind::Multiplication => (op1, op2, "imul", false, false),
+        BinOpKind::Division =>       (op2, op1, "idiv", true , false),
+        BinOpKind::Modulo =>         (op2, op1, "idiv", true , true ),
         _ => unreachable!(),
     };
 
-    output += &generate(ast, ast.get(node.children[child1]));
-    output += "push %rax\n";
-    output += &generate(ast, ast.get(node.children[child2]));
+    output += generate(ast, ast.get(op1));
+    output += "push %rax";
+    output += generate(ast, ast.get(op2));
 
     if div {
-        output += "cqo\n";
-        output += "pop %rcx\n";
-        output += &format!("{istr} %rcx\n");
+        output += "cqo";
+        output += "pop %rcx";
+        output += format!("{istr} %rcx");
     } else {
-        output += "pop %rcx\n";
-        output += &format!("{istr} %rcx, %rax\n");
+        output += "pop %rcx";
+        output += format!("{istr} %rcx, %rax");
     }
 
     if remainder {
-        output += "mov %rdx, %rax\n";
+        output += "mov %rdx, %rax";
     }
 
     output
@@ -67,8 +108,8 @@ fn gen_binop_aritmethic(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
 /// - `BinOpKind::LtEq`
 /// - `BinOpKind::Gt`
 /// - `BinOpKind::GtEq`
-fn gen_binop_compare(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
-    let mut output = String::new();
+fn gen_binop_compare(ast: &Ast, kind: &BinOpKind, op1: AstKey, op2: AstKey) -> Assembly {
+    let mut output = Assembly::new();
 
     let set_instr = match kind {
         BinOpKind::LogicalEq => "sete",
@@ -80,13 +121,13 @@ fn gen_binop_compare(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
         _ => unreachable!(),
     };
 
-    output += &generate(ast, ast.get(node.children[0]));
-    output += "push %rax\n";
-    output += &generate(ast, ast.get(node.children[1]));
-    output += "pop %rcx\n";
-    output += "cmp %rax, %rcx\n";
-    output += "mov $0, %rax\n";
-    output += &format!("{set_instr} %al\n");
+    output += generate(ast, ast.get(op1));
+    output += "push %rax";
+    output += generate(ast, ast.get(op2));
+    output += "pop %rcx";
+    output += "cmp %rax, %rcx";
+    output += "mov $0, %rax";
+    output += format!("{set_instr} %al");
 
     output
 }
@@ -94,36 +135,36 @@ fn gen_binop_compare(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
 /// generate assembly for
 /// - `BinOpKind::LogicalAnd`
 /// - `BinOpKind::LogicalOr`
-fn gen_binop_logical(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
-    let mut output = String::new();
+fn gen_binop_logical(ast: &Ast, kind: &BinOpKind, op1: AstKey, op2: AstKey) -> Assembly {
+    let mut output = Assembly::new();
     let op2_label = gen_unique_label();
     let end_label = gen_unique_label();
 
     let different_part = match kind {
         BinOpKind::LogicalAnd => {
-            format!("jne {op2_label}\n")
+            Assembly::from(format!("jne {op2_label}"))
         }
         BinOpKind::LogicalOr => {
-            let mut s = format!("je {op2_label}\n");
-            s += "mov $1, %rax\n";
+            let mut s = Assembly::from(format!("je {op2_label}"));
+            s += "mov $1, %rax";
             s
         }
         _ => unreachable!(),
     };
 
     // op1
-    output += &generate(ast, ast.get(node.children[0]));
-    output += "cmp $0, %rax\n";
-    output += &different_part;
-    output += &format!("jmp {end_label}\n");
+    output += generate(ast, ast.get(op1));
+    output += "cmp $0, %rax";
+    output += different_part;
+    output += format!("jmp {end_label}");
 
     // op2
-    output += &format!("{op2_label}:\n");
-    output += &generate(ast, ast.get(node.children[1]));
-    output += "cmp $0, %rax\n";
-    output += "mov $0, %rax\n";
-    output += "setne %al\n";
-    output += &format!("{end_label}:\n");
+    output += format!("{op2_label}:");
+    output += generate(ast, ast.get(op2));
+    output += "cmp $0, %rax";
+    output += "mov $0, %rax";
+    output += "setne %al";
+    output += format!("{end_label}:");
 
     output
 }
@@ -132,8 +173,8 @@ fn gen_binop_logical(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
 /// - `BinOpKind::BitwiseOr`
 /// - `BinOpKind::BitwiseXor`
 /// - `BinOpKind::BitwiseAnd`
-fn gen_binop_bitwise(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
-    let mut output = String::new();
+fn gen_binop_bitwise(ast: &Ast, kind: &BinOpKind, op1: AstKey, op2: AstKey) -> Assembly {
+    let mut output = Assembly::new();
 
     let instr = match kind {
         BinOpKind::BitwiseOr => "or",
@@ -142,11 +183,11 @@ fn gen_binop_bitwise(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
         _ => unreachable!(),
     };
 
-    output += &generate(ast, ast.get(node.children[0]));
-    output += "push %rax\n";
-    output += &generate(ast, ast.get(node.children[1]));
-    output += "pop %rcx\n";
-    output += &format!("{instr} %rcx, %rax\n");
+    output += generate(ast, ast.get(op1));
+    output += "push %rax";
+    output += generate(ast, ast.get(op2));
+    output += "pop %rcx";
+    output += format!("{instr} %rcx, %rax");
 
     output
 }
@@ -154,8 +195,8 @@ fn gen_binop_bitwise(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
 /// generate assembly for
 /// - `BinOpKind::BitShiftLeft`
 /// - `BinOpKind::BitShiftRight`
-fn gen_binop_bitshift(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
-    let mut output = String::new();
+fn gen_binop_bitshift(ast: &Ast, kind: &BinOpKind, op1: AstKey, op2: AstKey) -> Assembly {
+    let mut output = Assembly::new();
 
     let instr = match kind {
         BinOpKind::BitShiftLeft => "sal",
@@ -163,59 +204,57 @@ fn gen_binop_bitshift(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
         _ => unreachable!(),
     };
 
-    output += &generate(ast, ast.get(node.children[1]));
-    output += "push %rax\n";
-    output += &generate(ast, ast.get(node.children[0]));
-    output += "pop %rcx\n";
-    output += &format!("{instr} %cl, %rax\n");
+    output += generate(ast, ast.get(op2));
+    output += "push %rax";
+    output += generate(ast, ast.get(op1));
+    output += "pop %rcx";
+    output += format!("{instr} %cl, %rax");
 
     output
 }
 
-/// TODO: extract the 64bit vs 32bit logic/operators out
-/// TODO: don't add newlines by hand
-fn generate(ast: &Ast, node: &AstNode) -> String {
-    let mut output = String::new();
+fn generate(ast: &Ast, node: &AstNode) -> Assembly {
+    let mut output = Assembly::new();
 
     match &node.data {
-        AstData::Prog(_) => {
-            node.children.iter().for_each(|k| output += &generate(ast, ast.get(*k)))
+        AstData::Prog(main) => {
+            output += generate(ast, ast.get(*main))
         }
-        AstData::Func(Function { name }) => {
-            output += &format!(".globl {name}\n");
-            output += &format!("{name}:\n");
-            node.children.iter().for_each(|k| output += &generate(ast, ast.get(*k)))
+        AstData::Func{ name, statements } => {
+            output += format!(".globl {name}");
+            output += format!("{name}:");
+            statements.iter().for_each(|k| output += generate(ast, ast.get(*k)))
         }
-        AstData::Stmt(_) => {
-            output += &generate(ast, ast.get(node.children[0]));
-            output += "ret\n"
+        AstData::Stmt(Statement::Return(exp)) => {
+            output += generate(ast, ast.get(*exp));
+            output += "ret"
         }
         AstData::Exp(Expression::Literal(Literal::Integer(integer))) => {
-            output = format!("mov ${integer}, %rax\n")
+            output += format!("mov ${integer}, %rax")
         }
-        AstData::Exp(Expression::UnOp(kind)) => match kind {
+        AstData::Exp(Expression::UnOp(kind, op)) => match kind {
             UnOpKind::Negation => {
-                output += &generate(ast, ast.get(node.children[0]));
-                output += "neg %rax\n";
+                output += generate(ast, ast.get(*op));
+                output += "neg %rax";
             }
             UnOpKind::BitwiseNot => {
-                output += &generate(ast, ast.get(node.children[0]));
-                output += "not %rax\n";
+                output += generate(ast, ast.get(*op));
+                output += "not %rax";
             }
             UnOpKind::LogicalNot => {
-                output += &generate(ast, ast.get(node.children[0]));
-                output += "cmp $0, %rax\n";
-                output += "mov $0, %rax\n";
-                output += "sete %al\n";
+                output += generate(ast, ast.get(*op));
+                output += "cmp $0, %rax";
+                output += "mov $0, %rax";
+                output += "sete %al";
             }
         },
-        AstData::Exp(Expression::BinOp(kind)) => match kind {
+        AstData::Exp(Expression::BinOp(kind, op1, op2)) => match kind {
             BinOpKind::Addition
             | BinOpKind::Subtraction
             | BinOpKind::Multiplication
             | BinOpKind::Division
             | BinOpKind::Modulo => {
-                output += &gen_binop_aritmethic(ast, node, kind);
+                output += gen_binop_aritmethic(ast, kind, *op1, *op2);
             }
             BinOpKind::LogicalEq
             | BinOpKind::LogicalNotEq
@@ -223,19 +262,19 @@ fn generate(ast: &Ast, node: &AstNode) -> String {
             | BinOpKind::LtEq
             | BinOpKind::Gt
             | BinOpKind::GtEq => {
-                output += &gen_binop_compare(ast, node, kind);
+                output += gen_binop_compare(ast, kind, *op1, *op2);
             }
             BinOpKind::LogicalAnd | BinOpKind::LogicalOr => {
-                output += &gen_binop_logical(ast, node, kind);
+                output += gen_binop_logical(ast, kind, *op1, *op2);
             },
             BinOpKind::BitwiseOr
             | BinOpKind::BitwiseXor
             | BinOpKind::BitwiseAnd => {
-                output += &gen_binop_bitwise(ast, node, kind);
+                output += gen_binop_bitwise(ast, kind, *op1, *op2);
             },
             BinOpKind::BitShiftLeft
             | BinOpKind::BitShiftRight => {
-                output += &gen_binop_bitshift(ast, node, kind);
+                output += gen_binop_bitshift(ast, kind, *op1, *op2);
             },
         },
     }
@@ -243,11 +282,12 @@ fn generate(ast: &Ast, node: &AstNode) -> String {
     output
 }
 
+/// TODO: extract the 64bit vs 32bit logic/operators out
 pub fn codegen(input: Ast) -> Option<String> {
     let asm = generate(&input, input.get_root());
 
     #[cfg(debug_assertions)]
     println!("\n// ASM //\n{asm}\n");
 
-    Some(asm)
+    Some(asm.0)
 }
