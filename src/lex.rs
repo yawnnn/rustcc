@@ -21,7 +21,8 @@ pub enum TokenKind {
     Eq,
     Lt,
     Gt,
-    
+    Percent,
+    Caret,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -93,6 +94,8 @@ impl<'a> Lexer<'a> {
             '=' => Eq,
             '<' => Lt,
             '>' => Gt,
+            '%' => Percent,
+            '^' => Caret,
             c if c.is_numeric() => {
                 self.advance_while(char::is_numeric);
                 Literal

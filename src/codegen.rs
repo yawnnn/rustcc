@@ -26,15 +26,17 @@ fn gen_unique_label() -> String {
 /// - `BinOpKind::Subtraction`
 /// - `BinOpKind::Multiplication`
 /// - `BinOpKind::Division`
+/// - `BinOpKind::Modulo`
 fn gen_binop_aritmethic(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
     let mut output = String::new();
 
     #[rustfmt::skip]
-    let (child1, child2, istr, div) = match kind {
-        BinOpKind::Addition =>       (0, 1, "add" , false),
-        BinOpKind::Subtraction =>    (1, 0, "sub" , false),
-        BinOpKind::Multiplication => (0, 1, "imul", false),
-        BinOpKind::Division =>       (1, 0, "idiv", true ),
+    let (child1, child2, istr, div, remainder) = match kind {
+        BinOpKind::Addition =>       (0, 1, "add" , false, false),
+        BinOpKind::Subtraction =>    (1, 0, "sub" , false, false),
+        BinOpKind::Multiplication => (0, 1, "imul", false, false),
+        BinOpKind::Division =>       (1, 0, "idiv", true , false),
+        BinOpKind::Modulo =>         (1, 0, "idiv", true , true ),
         _ => unreachable!(),
     };
 
@@ -49,6 +51,10 @@ fn gen_binop_aritmethic(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
     } else {
         output += "pop %rcx\n";
         output += &format!("{istr} %rcx, %rax\n");
+    }
+
+    if remainder {
+        output += "mov %rdx, %rax\n";
     }
 
     output
@@ -122,8 +128,52 @@ fn gen_binop_logical(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
     output
 }
 
-/// TODO --- extract the 64bit vs 32bit logic/operators out
-/// TODO --- don't add newlines by hand
+/// generate assembly for
+/// - `BinOpKind::BitwiseOr`
+/// - `BinOpKind::BitwiseXor`
+/// - `BinOpKind::BitwiseAnd`
+fn gen_binop_bitwise(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
+    let mut output = String::new();
+
+    let instr = match kind {
+        BinOpKind::BitwiseOr => "or",
+        BinOpKind::BitwiseXor => "xor",
+        BinOpKind::BitwiseAnd => "and",
+        _ => unreachable!(),
+    };
+
+    output += &generate(ast, ast.get(node.children[0]));
+    output += "push %rax\n";
+    output += &generate(ast, ast.get(node.children[1]));
+    output += "pop %rcx\n";
+    output += &format!("{instr} %rcx, %rax\n");
+
+    output
+}
+
+/// generate assembly for
+/// - `BinOpKind::BitShiftLeft`
+/// - `BinOpKind::BitShiftRight`
+fn gen_binop_bitshift(ast: &Ast, node: &AstNode, kind: &BinOpKind) -> String {
+    let mut output = String::new();
+
+    let instr = match kind {
+        BinOpKind::BitShiftLeft => "sal",
+        BinOpKind::BitShiftRight => "sar",
+        _ => unreachable!(),
+    };
+
+    output += &generate(ast, ast.get(node.children[1]));
+    output += "push %rax\n";
+    output += &generate(ast, ast.get(node.children[0]));
+    output += "pop %rcx\n";
+    output += &format!("{instr} %cl, %rax\n");
+
+    output
+}
+
+/// TODO: extract the 64bit vs 32bit logic/operators out
+/// TODO: don't add newlines by hand
 fn generate(ast: &Ast, node: &AstNode) -> String {
     let mut output = String::new();
 
@@ -163,7 +213,8 @@ fn generate(ast: &Ast, node: &AstNode) -> String {
             BinOpKind::Addition
             | BinOpKind::Subtraction
             | BinOpKind::Multiplication
-            | BinOpKind::Division => {
+            | BinOpKind::Division
+            | BinOpKind::Modulo => {
                 output += &gen_binop_aritmethic(ast, node, kind);
             }
             BinOpKind::LogicalEq
@@ -176,7 +227,16 @@ fn generate(ast: &Ast, node: &AstNode) -> String {
             }
             BinOpKind::LogicalAnd | BinOpKind::LogicalOr => {
                 output += &gen_binop_logical(ast, node, kind);
-            }
+            },
+            BinOpKind::BitwiseOr
+            | BinOpKind::BitwiseXor
+            | BinOpKind::BitwiseAnd => {
+                output += &gen_binop_bitwise(ast, node, kind);
+            },
+            BinOpKind::BitShiftLeft
+            | BinOpKind::BitShiftRight => {
+                output += &gen_binop_bitshift(ast, node, kind);
+            },
         },
     }
 

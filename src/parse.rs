@@ -26,6 +26,7 @@ pub enum BinOpKind {
     Subtraction,
     Multiplication,
     Division,
+    Modulo,
     LogicalAnd,
     LogicalOr,
     LogicalEq,
@@ -34,6 +35,11 @@ pub enum BinOpKind {
     LtEq,
     Gt,
     GtEq,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitShiftLeft,
+    BitShiftRight,
 }
 
 impl BinOpKind {
@@ -137,6 +143,81 @@ impl BinOpKind {
         match first {
             TokenKind::Star => Some(Self::Multiplication),
             TokenKind::Slash => Some(Self::Division),
+            TokenKind::Percent => Some(Self::Modulo),
+            _ => {
+                *cursor = bak;
+                None
+            }
+        }
+    }
+
+    fn bitwise_and_try_from(cursor: &mut Cursor) -> Option<Self> {
+        let bak = cursor.clone();
+        let first = cursor.next().unwrap().kind;
+
+        match first {
+            TokenKind::And => {
+                let second = cursor.clone().next().map(|t| t.kind);
+
+                match second {
+                    Some(TokenKind::And) => {
+                        *cursor = bak;
+                        None
+                    },
+                    _ => Some(Self::BitwiseAnd),
+                }
+            },
+            _ => {
+                *cursor = bak;
+                None
+            }
+        }
+    }
+
+    fn bitwise_or_try_from(cursor: &mut Cursor) -> Option<Self> {
+        let bak = cursor.clone();
+        let first = cursor.next().unwrap().kind;
+
+        match first {
+            TokenKind::Or => {
+                let second = cursor.clone().next().map(|t| t.kind);
+
+                match second {
+                    Some(TokenKind::Or) => {
+                        *cursor = bak;
+                        None
+                    },
+                    _ => Some(Self::BitwiseOr),
+                }
+            },
+            _ => {
+                *cursor = bak;
+                None
+            }
+        }
+    }
+
+    fn bitwise_xor_try_from(cursor: &mut Cursor) -> Option<Self> {
+        let bak = cursor.clone();
+        let first = cursor.next().unwrap().kind;
+
+        match first {
+            TokenKind::Caret => Some(Self::BitwiseXor),
+            _ => {
+                *cursor = bak;
+                None
+            }
+        }
+    }
+
+    fn bitshift_try_from(cursor: &mut Cursor) -> Option<Self> {
+        let bak = cursor.clone();
+        let first = cursor.next().unwrap().kind;
+        let second = cursor.next().unwrap().kind;
+
+        match (first, second) {
+            (TokenKind::Lt, TokenKind::Lt) => Some(Self::BitShiftLeft),
+            (TokenKind::Gt, TokenKind::Gt) => Some(Self::BitShiftRight),
             _ => {
                 *cursor = bak;
                 None
@@ -187,7 +268,6 @@ impl fmt::Debug for AstKey {
     }
 }
 
-/// TODO --- remove children, embed number of children in enum
 #[derive(Debug)]
 pub struct AstNode {
     #[allow(dead_code)]
@@ -261,7 +341,7 @@ macro_rules! match_token {
     }};
 }
 
-/// Makes `value` or return
+/// Match `value` or return
 macro_rules! match_value {
     ($token:expr, $value:expr $(,)?) => {{
         let _token = $token;
@@ -329,32 +409,52 @@ fn parse_multiplicative_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey
     parse_binop(ast, cursor, parse_factor, BinOpKind::multiplicative_try_from)
 }
 
-/// <additive-exp> ::= <multiplicative_exp> { ("+" | "-") <multiplicative_exp> }
+/// <additive_exp> ::= <multiplicative_exp> { ("+" | "-") <multiplicative_exp> }
 fn parse_additive_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     parse_binop(ast, cursor, parse_multiplicative_exp, BinOpKind::additive_try_from)
 }
 
-/// <relational-exp> ::= <additive-exp> { ("<" | ">" | "<=" | ">=") <additive-exp> }
-fn parse_relational_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
-    parse_binop(ast, cursor, parse_additive_exp, BinOpKind::relational_try_from)
+/// <bitshift_exp> ::= <additive_exp> { ("<<" | ">>") <additive_exp> }
+fn parse_bitshift_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
+    parse_binop(ast, cursor, parse_additive_exp, BinOpKind::bitshift_try_from)
 }
 
-/// <equality-exp> ::= <relational-exp> { ("!=" | "==") <relational-exp> }
+/// <relational_exp> ::= <bitshift_exp> { ("<" | ">" | "<=" | ">=") <bitshift_exp> }
+fn parse_relational_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
+    parse_binop(ast, cursor, parse_bitshift_exp, BinOpKind::relational_try_from)
+}
+
+/// <equality_exp> ::= <relational_exp> { ("!=" | "==") <relational_exp> }
 fn parse_equality_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     parse_binop(ast, cursor, parse_relational_exp, BinOpKind::equality_try_from)
 }
 
-/// <logical-and-exp> ::= <equality-exp> { "&&" <equality-exp> }
-fn parse_logical_and_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
-    parse_binop(ast, cursor, parse_equality_exp, BinOpKind::logical_and_try_from)
+/// <bitwise_and_exp> ::= <equality_exp> { "&" <equality_exp> }
+fn parse_bitwise_and_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
+    parse_binop(ast, cursor, parse_equality_exp, BinOpKind::bitwise_and_try_from)
 }
 
-/// <logical-or-exp> ::= <logical-and-exp> { "||" <logical-and-exp> }
+/// <bitwise_xor_exp> ::= <bitwise_and_exp> { "^" <bitwise_and_exp> }
+fn parse_bitwise_xor_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
+    parse_binop(ast, cursor, parse_bitwise_and_exp, BinOpKind::bitwise_xor_try_from)
+}
+
+/// <bitwise_or_exp> ::= <bitwise_xor_exp> { "|" <bitwise_xor_exp> }
+fn parse_bitwise_or_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
+    parse_binop(ast, cursor, parse_bitwise_xor_exp, BinOpKind::bitwise_or_try_from)
+}
+
+/// <logical_and_exp> ::= <bitwise_or_exp> { "&&" <bitwise_or_exp> }
+fn parse_logical_and_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
+    parse_binop(ast, cursor, parse_bitwise_or_exp, BinOpKind::logical_and_try_from)
+}
+
+/// <logical_or_exp> ::= <logical_and_exp> { "||" <logical_and_exp> }
 fn parse_logical_or_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     parse_binop(ast, cursor, parse_logical_and_exp, BinOpKind::logical_or_try_from)
 }
 
-/// <exp> ::= <logical-or-exp>
+/// <exp> ::= <logical_or_exp>
 fn parse_exp(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     parse_logical_or_exp(ast, cursor)
 }
@@ -400,6 +500,8 @@ fn parse_program(ast: &mut Ast, cursor: &mut Cursor) -> Option<AstKey> {
     Some(ast.insert(prog, vec![kfunc]))
 }
 
+/// TODO: remove children from AstNode, embed number of children in enum
+/// TODO: streamline operator precendece
 pub fn parse(tokens: Vec<Token>) -> Option<Ast> {
     let mut ast = Ast::new();
     let mut cursor = Cursor::new(&tokens);
