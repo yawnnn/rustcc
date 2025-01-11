@@ -39,7 +39,7 @@ fn link<P: AsRef<Path>>(exe_name: P) -> Option<()> {
     let _output = stdout + &stderr;
 
     #[cfg(debug_assertions)]
-    println!("\n### LINKING ###\n{_output}\n");
+    println!("\n// LINKING //\n{_output}\n");
 
     Some(())
 }

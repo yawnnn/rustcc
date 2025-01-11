@@ -33,9 +33,14 @@ def print_success():
 
 
 def print_failure(correct_result: tuple[int, str], my_result: tuple[int, str]):
-    print("FAIL")
-    print(correct_result, my_result)
+    print(f"FAIL => correct: {correct_result}, mine: {my_result}")
 
+
+def get_build_mode(debug_mode: bool) -> str:
+    if debug_mode:
+        return "--profile dev"
+    else:
+        return "--profile release"
 
 def run_correct(files: list[str], out_name: str, exe_name: str) -> tuple[int, str]:
     build_cmd = ["gcc", "-w", "-o", out_name] + files
@@ -53,11 +58,14 @@ def run_correct(files: list[str], out_name: str, exe_name: str) -> tuple[int, st
 
 
 def run_mine(
-    build_mode: str, files: list[str], asm_name: str, out_name: str, exe_name: str
+    debug_mode: bool, files: list[str], asm_name: str, out_name: str, exe_name: str
 ) -> tuple[int, tuple[int, str]]:
-    build_cmd = f"cargo run {build_mode} --".split() + ["-o", out_name] + files
+    build_cmd = f"cargo run {get_build_mode(debug_mode)} --".split() + ["-o", out_name] + files
     # print("\n{}\n".format(" ".join(build_cmd)))
-    build_retcode = subprocess.run(build_cmd, stderr=subprocess.DEVNULL).returncode
+    if debug_mode:
+        build_retcode = subprocess.run(build_cmd).returncode
+    else:
+        build_retcode = subprocess.run(build_cmd, stderr=subprocess.DEVNULL).returncode
 
     # if i created some files, then i force retcode okay
     if os.path.exists(asm_name) or os.path.exists(exe_name):
@@ -117,7 +125,7 @@ def get_stage_files(
     return (valid_files, multifile_dirs, invalid_files)
 
 
-def test_stage(stage: int, build_mode: str, input_files: list[str]) -> tuple[int]:
+def test_stage(stage: int, debug_mode: bool, input_files: list[str]) -> tuple[int]:
     successes = 0
     failures = 0
 
@@ -155,7 +163,7 @@ def test_stage(stage: int, build_mode: str, input_files: list[str]) -> tuple[int
         print_test_name(test_name)
 
         correct_result = run_correct(files, out_name, exe_name)
-        (_, my_result) = run_mine(build_mode, files, asm_name, out_name, exe_name)
+        (_, my_result) = run_mine(debug_mode, files, asm_name, out_name, exe_name)
 
         if correct_result == my_result:
             successes += 1
@@ -173,7 +181,7 @@ def test_stage(stage: int, build_mode: str, input_files: list[str]) -> tuple[int
         print_test_name(test_name)
 
         correct_result = run_correct(files, out_name, exe_name)
-        (_, my_result) = run_mine(build_mode, files, asm_name, out_name, exe_name)
+        (_, my_result) = run_mine(debug_mode, files, asm_name, out_name, exe_name)
 
         if correct_result == my_result:
             successes += 1
@@ -196,7 +204,7 @@ def test_stage(stage: int, build_mode: str, input_files: list[str]) -> tuple[int
         print_test_name(test_name)
 
         (build_retcode, my_result) = run_mine(
-            build_mode, files, asm_name, out_name, exe_name
+            debug_mode, files, asm_name, out_name, exe_name
         )
 
         # Build failure is success
@@ -222,12 +230,7 @@ if __name__ == "__main__":
     total_successes = 0
     total_failures = 0
 
-    if args.debug:
-        build_mode = "--profile dev"
-    else:
-        build_mode = "--profile release"
-
-    build_cc_cmd = f"cargo build {build_mode}".split()
+    build_cc_cmd = f"cargo build {get_build_mode(args.debug)}".split()
 
     proc = subprocess.run(build_cc_cmd, stderr=subprocess.PIPE)
     if proc.returncode:
@@ -240,7 +243,7 @@ if __name__ == "__main__":
         stages = list(range(1, MAX_STAGES + 1))
 
     for stage in stages:
-        (successes, failures) = test_stage(stage, build_mode, args.files)
+        (successes, failures) = test_stage(stage, args.debug, args.files)
         total_successes += successes
         total_failures += failures
 

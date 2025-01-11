@@ -16,6 +16,12 @@ pub enum TokenKind {
     Plus,
     Star,
     Slash,
+    And,
+    Or,
+    Eq,
+    Lt,
+    Gt,
+    
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -82,6 +88,11 @@ impl<'a> Lexer<'a> {
             '+' => Plus,
             '*' => Star,
             '/' => Slash,
+            '&' => And,
+            '|' => Or,
+            '=' => Eq,
+            '<' => Lt,
+            '>' => Gt,
             c if c.is_numeric() => {
                 self.advance_while(char::is_numeric);
                 Literal
@@ -121,7 +132,7 @@ pub fn lex(src: &str) -> Vec<Token> {
     let tokens = Lexer::new(src).into_iter().collect::<Vec<_>>();
 
     #[cfg(debug_assertions)]
-    println!("\n### TOKENS ###\n{tokens:#?}\n");
+    println!("\n// TOKENS //\n{tokens:#?}\n");
 
     tokens
 }
