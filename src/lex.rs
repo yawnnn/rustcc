@@ -5,24 +5,32 @@ pub enum TokenKind {
     Whitespace,
     Ident,
     Literal,
-    Semicolon,
-    OpenParen,
-    CloseParen,
-    OpenBrace,
-    CloseBrace,
-    Minus,
-    Tilde,
-    Bang,
-    Plus,
-    Star,
-    Slash,
-    And,
-    Or,
-    Eq,
-    Lt,
-    Gt,
-    Percent,
-    Caret,
+    OpenBrace,  // {
+    CloseBrace, // }
+    OpenParen,  // (
+    CloseParen, // )
+    Semicolon,  // ;
+    Minus,      // -
+    Tilde,      // ~
+    Not,        // !
+    Neq,        // !=
+    Plus,       // +
+    Star,       // *
+    Slash,      // /
+    And,        // &
+    AndAnd,     // &&
+    Or,         // |
+    OrOr,       // ||
+    Eq,         // =
+    EqEq,       // ==
+    Lt,         // <
+    LtLt,       // <<
+    Leq,        // <=
+    Gt,         // >
+    GtGt,       // >>
+    Geq,        // >=
+    Percent,    // %
+    Caret,      // ^
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -64,6 +72,21 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// if `predicate` returns something, advance `self` and return that. otherwise return `default`
+    fn predicate_or(
+        &mut self,
+        mut predicate: impl FnMut(char) -> Option<TokenKind>,
+        default: TokenKind,
+    ) -> TokenKind {
+        let mut inner = || {
+            let kind = predicate(self.peek_char()?)?;
+            self.next_char();
+            Some(kind)
+        };
+
+        inner().unwrap_or(default)
+    }
+
     fn is_ident_start(c: char) -> bool {
         c == '_' || c.is_alphabetic()
     }
@@ -84,16 +107,54 @@ impl<'a> Lexer<'a> {
             ')' => CloseParen,
             ';' => Semicolon,
             '~' => Tilde,
-            '!' => Bang,
+            '!' => self.predicate_or(
+                |c| match c {
+                    '=' => Some(Neq),
+                    _ => None,
+                },
+                Not,
+            ),
             '-' => Minus,
             '+' => Plus,
             '*' => Star,
             '/' => Slash,
-            '&' => And,
-            '|' => Or,
-            '=' => Eq,
-            '<' => Lt,
-            '>' => Gt,
+            '&' => self.predicate_or(
+                |c| match c {
+                    '&' => Some(AndAnd),
+                    _ => None,
+                },
+                And,
+            ),
+            '|' => self.predicate_or(
+                |c| match c {
+                    '|' => Some(OrOr),
+                    _ => None,
+                },
+                Or,
+            ),
+            '=' => self.predicate_or(
+                |c| match c {
+                    '=' => Some(EqEq),
+                    _ => None,
+                },
+                Eq,
+            ),
+            '<' => self.predicate_or(
+                |c| match c {
+                    '<' => Some(LtLt),
+                    '=' => Some(Leq),
+                    _ => None,
+                },
+                Lt,
+            ),
+            '>' => self.predicate_or(
+                |c| match c {
+                    '>' => Some(GtGt),
+                    '=' => Some(Geq),
+                    _ => None,
+                },
+                Gt,
+            ),
             '%' => Percent,
             '^' => Caret,
             c if c.is_numeric() => {
@@ -134,8 +195,8 @@ impl<'a> Lexer<'a> {
 pub fn lex(src: &str) -> Vec<Token> {
     let tokens = Lexer::new(src).into_iter().collect::<Vec<_>>();
 
-    #[cfg(debug_assertions)]
-    println!("\n// TOKENS //\n{tokens:#?}\n");
+    //#[cfg(debug_assertions)]
+    //println!("\n// TOKENS //\n{tokens:#?}\n");
 
     tokens
 }

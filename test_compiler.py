@@ -58,10 +58,10 @@ def run_correct(files: list[str], out_name: str, exe_name: str) -> tuple[int, st
 
 
 def run_mine(
-    debug_mode: bool, files: list[str], asm_name: str, out_name: str, exe_name: str
+    debug_mode: bool, run_exe: bool, files: list[str], asm_name: str, out_name: str, exe_name: str
 ) -> tuple[int, tuple[int, str]]:
     build_cmd = f"cargo run {get_build_mode(debug_mode)} --".split() + ["-o", out_name] + files
-    # print("\n{}\n".format(" ".join(build_cmd)))
+    
     if debug_mode:
         build_retcode = subprocess.run(build_cmd).returncode
     else:
@@ -71,7 +71,7 @@ def run_mine(
     if os.path.exists(asm_name) or os.path.exists(exe_name):
         build_retcode = 0
 
-    if build_retcode == 0:
+    if build_retcode == 0 and run_exe:
         run_cmd = [exe_name]
         proc = subprocess.run(run_cmd, stdout=subprocess.PIPE)
         stdout = proc.stdout.decode().strip()
@@ -125,7 +125,7 @@ def get_stage_files(
     return (valid_files, multifile_dirs, invalid_files)
 
 
-def test_stage(stage: int, debug_mode: bool, input_files: list[str]) -> tuple[int]:
+def test_stage(stage: int, debug_mode: bool, run_exe: bool, input_files: list[str]) -> tuple[int]:
     successes = 0
     failures = 0
 
@@ -162,14 +162,19 @@ def test_stage(stage: int, debug_mode: bool, input_files: list[str]) -> tuple[in
 
         print_test_name(test_name)
 
-        correct_result = run_correct(files, out_name, exe_name)
-        (_, my_result) = run_mine(debug_mode, files, asm_name, out_name, exe_name)
+        (_, my_result) = run_mine(debug_mode, run_exe, files, asm_name, out_name, exe_name)
+
+        if run_exe:
+            correct_result = run_correct(files, out_name, exe_name)
+        else:
+            correct_result = my_result
 
         if correct_result == my_result:
             successes += 1
             print_success()
         else:
-            failures += 1
+            if "skip_on_failure" not in prog:
+                failures += 1
             print_failure(correct_result, my_result)
 
     # Multi-file programs
@@ -181,7 +186,7 @@ def test_stage(stage: int, debug_mode: bool, input_files: list[str]) -> tuple[in
         print_test_name(test_name)
 
         correct_result = run_correct(files, out_name, exe_name)
-        (_, my_result) = run_mine(debug_mode, files, asm_name, out_name, exe_name)
+        (_, my_result) = run_mine(debug_mode, run_exe, files, asm_name, out_name, exe_name)
 
         if correct_result == my_result:
             successes += 1
@@ -204,7 +209,7 @@ def test_stage(stage: int, debug_mode: bool, input_files: list[str]) -> tuple[in
         print_test_name(test_name)
 
         (build_retcode, my_result) = run_mine(
-            debug_mode, files, asm_name, out_name, exe_name
+            debug_mode, run_exe, files, asm_name, out_name, exe_name
         )
 
         # Build failure is success
@@ -225,6 +230,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--debug", action="store_true", help="debug mode")
     parser.add_argument("-s", "--stages", nargs="*", help="stages")
     parser.add_argument("-f", "--files", nargs="*", help="files")
+    parser.add_argument("-n", "--dont-run", action="store_true", help="don't run the final executable")
     args = parser.parse_args()
 
     total_successes = 0
@@ -243,7 +249,7 @@ if __name__ == "__main__":
         stages = list(range(1, MAX_STAGES + 1))
 
     for stage in stages:
-        (successes, failures) = test_stage(stage, args.debug, args.files)
+        (successes, failures) = test_stage(stage, args.debug, not args.dont_run, args.files)
         total_successes += successes
         total_failures += failures
 

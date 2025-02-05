@@ -1,7 +1,9 @@
-mod codegen;
-mod compile;
+mod common;
 mod lex;
 mod parse;
+mod check;
+mod codegen;
+mod compile;
 
 use crate::compile::compile;
 

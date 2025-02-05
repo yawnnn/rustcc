@@ -1,6 +1,6 @@
-use crate::codegen::codegen;
 use crate::lex::lex;
 use crate::parse::parse;
+use crate::codegen::codegen;
 
 use std::{
     fs::{self, File},
@@ -47,7 +47,7 @@ fn link<P: AsRef<Path>>(exe_name: P) -> Option<()> {
 pub fn compile<P: AsRef<Path>>(exe_name: P, src_name: P) -> Option<()> {
     let src = fs::read_to_string(&src_name).unwrap();
     let tokens = lex(&src);
-    let ast = parse(tokens)?;
+    let ast = parse(&tokens)?;
     let asm = codegen(ast)?;
     write_asm(&exe_name, &asm)?;
     link(&exe_name)
