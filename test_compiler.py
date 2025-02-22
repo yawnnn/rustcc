@@ -36,17 +36,26 @@ def print_failure(correct_result: tuple[int, str], my_result: tuple[int, str]):
     print(f"FAIL => correct: {correct_result}, mine: {my_result}")
 
 
+def get_exe_extension() -> str:
+    return ".exe" if os.name == "nt" else ""
+
+
+def get_executable_command(exe_name: str) -> list[str]:
+    return [exe_name] if os.name == "nt" else [f"./{exe_name}"]
+
+
 def get_build_mode(debug_mode: bool) -> str:
     if debug_mode:
         return "--profile dev"
     else:
         return "--profile release"
 
+
 def run_correct(files: list[str], out_name: str, exe_name: str) -> tuple[int, str]:
     build_cmd = ["gcc", "-w", "-o", out_name] + files
     subprocess.run(build_cmd, stdout=subprocess.DEVNULL)
 
-    run_cmd = [exe_name]
+    run_cmd = get_executable_command(exe_name)
     proc = subprocess.run(run_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     stdout = proc.stdout.decode().strip()
     retcode = proc.returncode
@@ -58,10 +67,16 @@ def run_correct(files: list[str], out_name: str, exe_name: str) -> tuple[int, st
 
 
 def run_mine(
-    debug_mode: bool, run_exe: bool, files: list[str], asm_name: str, out_name: str, exe_name: str
+    debug_mode: bool,
+    run_exe: bool,
+    keep_exe: bool,
+    files: list[str],
+    asm_name: str,
+    out_name: str,
+    exe_name: str,
 ) -> tuple[int, tuple[int, str]]:
     build_cmd = f"cargo run {get_build_mode(debug_mode)} --".split() + ["-o", out_name] + files
-    
+
     if debug_mode:
         build_retcode = subprocess.run(build_cmd).returncode
     else:
@@ -72,7 +87,7 @@ def run_mine(
         build_retcode = 0
 
     if build_retcode == 0 and run_exe:
-        run_cmd = [exe_name]
+        run_cmd = get_executable_command(exe_name)
         proc = subprocess.run(run_cmd, stdout=subprocess.PIPE)
         stdout = proc.stdout.decode().strip()
         retcode = proc.returncode
@@ -82,24 +97,34 @@ def run_mine(
 
     if os.path.exists(asm_name):
         os.remove(asm_name)
+
     if os.path.exists(exe_name):
-        os.remove(exe_name)
+        # run_correct will run after this, create one with same name and delete it
+        if keep_exe:
+            os.rename(exe_name, os.path.join(os.path.dirname(os.path.realpath(__file__)), os.path.basename(exe_name)))
+        else:
+            os.remove(exe_name)
 
     return (build_retcode, (stdout, retcode))
 
 
-def expand_into_possible_files(
-    files: list[str], valid_dir: str, multifile_dir: str, invalid_dir: str
-) -> list[str]:
-    if files:
-        tmp = []
-        for file in files:
-            valid_file = os.path.join(valid_dir, f"{file}.c")
-            invalid_file = os.path.join(invalid_dir, f"{file}.c")
-            multifile_dir = os.path.join(multifile_dir, file)
-            tmp += [valid_file, invalid_file, multifile_dir]
-        return tmp
-    return []
+def expand_into_possible_files(files: list[str], valid_dir: str, multifile_dir: str, invalid_dir: str) -> list[str]:
+    possible = []
+
+    if not files:
+        files = []
+
+    for file in files:
+        if "*" in file:
+            possible += glob.glob(os.path.join(valid_dir, file))
+            possible += glob.glob(os.path.join(invalid_dir, file))
+            possible += glob.glob(os.path.join(multifile_dir, file))
+        else:
+            possible.append(os.path.join(valid_dir, f"{file}.c"))
+            possible.append(os.path.join(invalid_dir, f"{file}.c"))
+            possible.append(os.path.join(multifile_dir, file))
+
+    return possible
 
 
 def get_stage_files(
@@ -125,7 +150,7 @@ def get_stage_files(
     return (valid_files, multifile_dirs, invalid_files)
 
 
-def test_stage(stage: int, debug_mode: bool, run_exe: bool, input_files: list[str]) -> tuple[int]:
+def test_stage(stage: int, debug_mode: bool, run_exe: bool, keep_exe: bool, input_files: list[str]) -> tuple[int]:
     successes = 0
     failures = 0
 
@@ -135,13 +160,9 @@ def test_stage(stage: int, debug_mode: bool, run_exe: bool, input_files: list[st
     invalid_dir = os.path.join(stage_dir, "invalid")
 
     # I don't know which one it is, so i add all possibilites, and then filter the existing files with this
-    input_files = expand_into_possible_files(
-        input_files, valid_dir, multifile_dir, invalid_dir
-    )
+    input_files = expand_into_possible_files(input_files, valid_dir, multifile_dir, invalid_dir)
 
-    valid_files, multifile_dirs, invalid_files = get_stage_files(
-        input_files, valid_dir, multifile_dir, invalid_dir
-    )
+    valid_files, multifile_dirs, invalid_files = get_stage_files(input_files, valid_dir, multifile_dir, invalid_dir)
 
     # If i don't have anything, i quit
     if not len(valid_files + multifile_dirs + invalid_files):
@@ -156,13 +177,13 @@ def test_stage(stage: int, debug_mode: bool, run_exe: bool, input_files: list[st
     for prog in valid_files:
         out_name = os.path.splitext(prog)[0]
         asm_name = f"{out_name}.s"
-        exe_name = f"{out_name}.exe"
+        exe_name = f"{out_name}{get_exe_extension()}"
         test_name = os.path.basename(out_name)
         files = [prog]
 
         print_test_name(test_name)
 
-        (_, my_result) = run_mine(debug_mode, run_exe, files, asm_name, out_name, exe_name)
+        (_, my_result) = run_mine(debug_mode, run_exe, keep_exe, files, asm_name, out_name, exe_name)
 
         if run_exe:
             correct_result = run_correct(files, out_name, exe_name)
@@ -186,7 +207,7 @@ def test_stage(stage: int, debug_mode: bool, run_exe: bool, input_files: list[st
         print_test_name(test_name)
 
         correct_result = run_correct(files, out_name, exe_name)
-        (_, my_result) = run_mine(debug_mode, run_exe, files, asm_name, out_name, exe_name)
+        (_, my_result) = run_mine(debug_mode, run_exe, keep_exe, files, asm_name, out_name, exe_name)
 
         if correct_result == my_result:
             successes += 1
@@ -202,15 +223,13 @@ def test_stage(stage: int, debug_mode: bool, run_exe: bool, input_files: list[st
     for prog in invalid_files:
         out_name = os.path.splitext(prog)[0]
         asm_name = f"{out_name}.s"
-        exe_name = f"{out_name}.exe"
+        exe_name = f"{out_name}{get_exe_extension()}"
         test_name = os.path.basename(out_name)
         files = [prog]
 
         print_test_name(test_name)
 
-        (build_retcode, my_result) = run_mine(
-            debug_mode, run_exe, files, asm_name, out_name, exe_name
-        )
+        (build_retcode, my_result) = run_mine(debug_mode, run_exe, keep_exe, files, asm_name, out_name, exe_name)
 
         # Build failure is success
         if build_retcode != 0:
@@ -230,7 +249,8 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--debug", action="store_true", help="debug mode")
     parser.add_argument("-s", "--stages", nargs="*", help="stages")
     parser.add_argument("-f", "--files", nargs="*", help="files")
-    parser.add_argument("-n", "--dont-run", action="store_true", help="don't run the final executable")
+    parser.add_argument("-n", "--no-run", action="store_true", help="don't run my executable")
+    parser.add_argument("-k", "--keep-exe", action="store_true", help="keep my executable")
     args = parser.parse_args()
 
     total_successes = 0
@@ -249,7 +269,7 @@ if __name__ == "__main__":
         stages = list(range(1, MAX_STAGES + 1))
 
     for stage in stages:
-        (successes, failures) = test_stage(stage, args.debug, not args.dont_run, args.files)
+        (successes, failures) = test_stage(stage, args.debug, not args.no_run, args.keep_exe, args.files)
         total_successes += successes
         total_failures += failures
 

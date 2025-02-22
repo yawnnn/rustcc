@@ -1,5 +1,6 @@
 use crate::lex::lex;
 use crate::parse::parse;
+use crate::check::check;
 use crate::codegen::codegen;
 
 use std::{
@@ -39,16 +40,30 @@ fn link<P: AsRef<Path>>(exe_name: P) -> Option<()> {
     let _output = stdout + &stderr;
 
     #[cfg(debug_assertions)]
-    println!("\n// LINKING //\n{_output}\n");
+    println!("\n# LINKING\n```\n{_output}\n```\n");
 
     Some(())
 }
 
-pub fn compile<P: AsRef<Path>>(exe_name: P, src_name: P) -> Option<()> {
+pub fn compile<P: AsRef<Path>>(exe_name: Option<P>, src_name: P, dump_ast: bool, dump_asm: bool) -> Option<()> {
     let src = fs::read_to_string(&src_name).unwrap();
     let tokens = lex(&src);
     let ast = parse(&tokens)?;
-    let asm = codegen(ast)?;
+
+    if dump_ast {
+        println!("{:#?}", ast);
+        return Some(());
+    }
+
+    let ir = check(&ast);
+    let asm = codegen(ir)?;
+
+    if dump_asm {
+        println!("{}", asm);
+        return Some(())
+    }
+
+    let exe_name = exe_name.unwrap();
     write_asm(&exe_name, &asm)?;
     link(&exe_name)
 }

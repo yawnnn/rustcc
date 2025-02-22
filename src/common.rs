@@ -2,10 +2,16 @@
 #![allow(unused_imports)]
 #![allow(unused_macros)]
 
-use std::{fmt, ops};
+use std::{fmt, ops::{self, Index}};
 
 #[derive(Clone, Copy)]
 pub struct IndexKey(usize);
+
+impl IndexKey {
+    pub fn inner(self) -> usize {
+        self.0
+    }
+}
 
 impl fmt::Debug for IndexKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

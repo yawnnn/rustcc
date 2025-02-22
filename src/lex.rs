@@ -1,4 +1,4 @@
-use std::str::Chars;
+use std::{fmt::Debug, str::Chars};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
@@ -33,30 +33,46 @@ pub enum TokenKind {
     Caret,      // ^
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Token<'a> {
     pub kind: TokenKind,
     pub value: &'a str,
+    pub _pos: (usize, usize),
 }
 
 impl<'a> Token<'a> {
-    fn new(kind: TokenKind, value: &'a str) -> Self {
-        Token { kind, value }
+    fn new(kind: TokenKind, value: &'a str, _pos: (usize, usize)) -> Self {
+        Token { kind, value, _pos }
+    }
+}
+
+impl Debug for Token<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.value)
     }
 }
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
     chars: Chars<'a>,
+    pos: (usize, usize),
 }
 
 impl<'a> Lexer<'a> {
     fn new(input: &'a str) -> Lexer<'a> {
-        Lexer { chars: input.chars() }
+        Lexer { chars: input.chars(), pos: (0, 0) }
     }
 
     fn next_char(&mut self) -> Option<char> {
-        self.chars.next()
+        let next = self.chars.next();
+        match next {
+            Some('\n') => {
+                self.pos.0 += 1;
+                self.pos.1 = 0;
+            }
+            _ => self.pos.1 += 1,
+        }
+        next
     }
 
     fn peek_char(&self) -> Option<char> {
@@ -176,7 +192,7 @@ impl<'a> Lexer<'a> {
         let len = start.len() - end.len();
         let str = &start[..len];
 
-        Some(Token::new(kind, str))
+        Some(Token::new(kind, str, self.pos))
     }
 
     // pub fn peek_token(&self) -> Option<(Token, &str)> {
@@ -196,7 +212,7 @@ pub fn lex(src: &str) -> Vec<Token> {
     let tokens = Lexer::new(src).into_iter().collect::<Vec<_>>();
 
     //#[cfg(debug_assertions)]
-    //println!("\n// TOKENS //\n{tokens:#?}\n");
+    //println!("\n# TOKENS\n```rust\n{tokens:#?}\n```\n");
 
     tokens
 }

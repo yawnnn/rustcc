@@ -5,7 +5,7 @@ use std::fmt;
 use crate::common::*;
 use crate::lex::{Token, TokenKind};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum UnOpKind {
     ArithNeg,
     BitWsNot,
@@ -23,7 +23,7 @@ impl UnOpKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinOpKind {
     // arithmetic
     ArithAdd,
@@ -184,10 +184,6 @@ impl BinOpKind {
     }
 }
 
-#[derive(Debug)]
-pub enum Literal {
-    Integer(i32),
-}
 
 #[derive(Debug)]
 pub enum Expression<'a> {
@@ -195,7 +191,7 @@ pub enum Expression<'a> {
     UnOp(UnOpKind, AstKey),
     Var { name: Token<'a> },
     Assignment { name: Token<'a>, value: AstKey },
-    Literal(Literal),
+    Literal(Token<'a>),
 }
 
 #[derive(Debug)]
@@ -382,8 +378,7 @@ fn parse_factor<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey
             Some(kexp)
         }
         TokenKind::Literal => {
-            let literal = Literal::Integer(token.value.parse::<i32>().ok().unwrap());
-            let literal = AstData::Exp(Expression::Literal(literal));
+            let literal = AstData::Exp(Expression::Literal(token));
 
             Some(ast.push(literal))
         }
@@ -550,7 +545,7 @@ fn parse_program<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKe
 }
 
 /// TODO: streamline operator precendece
-/// TODO: AST traversal & pretty-printing
+/// TODO: better AST traversal & pretty-printing
 /// TODO: optimize Ast e IndexList
 pub fn parse<'a>(tokens: &'a [Token]) -> Option<Ast<'a>> {
     let mut ast = Ast::new();
@@ -560,9 +555,7 @@ pub fn parse<'a>(tokens: &'a [Token]) -> Option<Ast<'a>> {
     ast.root = Some(kprog);
 
     #[cfg(debug_assertions)]
-    println!("\n// AST //\n{ast:#?}\n");
+    println!("\n# AST\n```rust\n{ast:#?}\n```\n");
 
-    //return None;
-    //#[allow(unreachable_code)]
     Some(ast)
 }
