@@ -90,19 +90,19 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// if `predicate` returns something, advance `self` and return that. otherwise return `default`
-    fn predicate_or(
+    /// peek, run `predicate` and advance if Ok()
+    /// returns inner result of `predicate` both if Ok() or Err()
+    fn advance_if_ok(
         &mut self,
-        mut predicate: impl FnMut(char) -> Option<TokenKind>,
-        default: TokenKind,
+        mut predicate: impl FnMut(char) -> Result<TokenKind, TokenKind>,
     ) -> TokenKind {
-        let mut inner = || {
-            let kind = predicate(self.peek_char()?)?;
-            self.next_char();
-            Some(kind)
-        };
-
-        inner().unwrap_or(default)
+        match predicate(self.peek_char().unwrap_or('\0')) {
+            Ok(inner) => {
+                self.next_char();
+                inner
+            }
+            Err(inner) => inner,
+        }
     }
 
     fn is_ident_start(c: char) -> bool {
@@ -126,54 +126,36 @@ impl<'a> Lexer<'a> {
             ';' => Semicolon,
             ':' => Colon,
             '~' => Tilde,
-            '!' => self.predicate_or(
-                |c| match c {
-                    '=' => Some(Neq),
-                    _ => None,
-                },
-                Not,
-            ),
+            '!' => self.advance_if_ok(|c| match c {
+                '=' => Ok(Neq),
+                _ => Err(Not),
+            }),
             '-' => Minus,
             '+' => Plus,
             '*' => Star,
             '/' => Slash,
-            '&' => self.predicate_or(
-                |c| match c {
-                    '&' => Some(AndAnd),
-                    _ => None,
-                },
-                And,
-            ),
-            '|' => self.predicate_or(
-                |c| match c {
-                    '|' => Some(OrOr),
-                    _ => None,
-                },
-                Or,
-            ),
-            '=' => self.predicate_or(
-                |c| match c {
-                    '=' => Some(EqEq),
-                    _ => None,
-                },
-                Eq,
-            ),
-            '<' => self.predicate_or(
-                |c| match c {
-                    '<' => Some(LtLt),
-                    '=' => Some(Leq),
-                    _ => None,
-                },
-                Lt,
-            ),
-            '>' => self.predicate_or(
-                |c| match c {
-                    '>' => Some(GtGt),
-                    '=' => Some(Geq),
-                    _ => None,
-                },
-                Gt,
-            ),
+            '&' => self.advance_if_ok(|c| match c {
+                '&' => Ok(AndAnd),
+                _ => Err(And),
+            }),
+            '|' => self.advance_if_ok(|c| match c {
+                '|' => Ok(OrOr),
+                _ => Err(Or),
+            }),
+            '=' => self.advance_if_ok(|c| match c {
+                '=' => Ok(EqEq),
+                _ => Err(Eq),
+            }),
+            '<' => self.advance_if_ok(|c| match c {
+                '<' => Ok(LtLt),
+                '=' => Ok(Leq),
+                _ => Err(Lt),
+            }),
+            '>' => self.advance_if_ok(|c| match c {
+                '>' => Ok(GtGt),
+                '=' => Ok(Geq),
+                _ => Err(Gt),
+            }),
             '%' => Percent,
             '^' => Caret,
             '?' => Question,
@@ -212,6 +194,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
+/// TODO: can't i ignore spaces here
 pub fn lex(src: &str) -> Vec<Token> {
     let tokens = Lexer::new(src).into_iter().collect::<Vec<_>>();
 

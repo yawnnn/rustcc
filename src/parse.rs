@@ -56,131 +56,81 @@ pub enum BinOpKind {
 
 impl BinOpKind {
     fn logical_or_try_from(cursor: &mut Cursor) -> Option<Self> {
-        let bak = cursor.clone();
-
-        match cursor.next().map(|t| t.kind) {
-            Some(TokenKind::OrOr) => Some(Self::LogicOr),
-            _ => {
-                *cursor = bak;
-                None
-            }
-        }
+        cursor.advance_if_some(|k| match k {
+            TokenKind::OrOr => Some(Self::LogicOr),
+            _ => None,
+        })
     }
 
     fn logical_and_try_from(cursor: &mut Cursor) -> Option<Self> {
-        let bak = cursor.clone();
-
-        match cursor.next().map(|t| t.kind) {
-            Some(TokenKind::AndAnd) => Some(Self::LogicAnd),
-            _ => {
-                *cursor = bak;
-                None
-            }
-        }
+        cursor.advance_if_some(|k| match k {
+            TokenKind::AndAnd => Some(Self::LogicAnd),
+            _ => None,
+        })
     }
 
-    fn relational_eq_try_from(cursor: &mut Cursor) -> Option<Self> {
-        let bak = cursor.clone();
-
-        match cursor.next().map(|t| t.kind) {
-            Some(TokenKind::EqEq) => Some(Self::RelatEq),
-            Some(TokenKind::Neq) => Some(Self::RelatNotEq),
-            _ => {
-                *cursor = bak;
-                None
-            }
-        }
+    fn equality_try_from(cursor: &mut Cursor) -> Option<Self> {
+        cursor.advance_if_some(|k| match k {
+            TokenKind::EqEq => Some(Self::RelatEq),
+            TokenKind::Neq => Some(Self::RelatNotEq),
+            _ => None,
+        })
     }
 
-    fn relational_diff_try_from(cursor: &mut Cursor) -> Option<Self> {
-        let bak = cursor.clone();
-
-        match cursor.next().map(|t| t.kind) {
-            Some(TokenKind::Gt) => Some(Self::RelatGt),
-            Some(TokenKind::Geq) => Some(Self::RelatGeq),
-            Some(TokenKind::Lt) => Some(Self::RelatLt),
-            Some(TokenKind::Leq) => Some(Self::RelatLeq),
-            _ => {
-                *cursor = bak;
-                None
-            }
-        }
+    fn relational_try_from(cursor: &mut Cursor) -> Option<Self> {
+        cursor.advance_if_some(|k| match k {
+            TokenKind::Gt => Some(Self::RelatGt),
+            TokenKind::Geq => Some(Self::RelatGeq),
+            TokenKind::Lt => Some(Self::RelatLt),
+            TokenKind::Leq => Some(Self::RelatLeq),
+            _ => None,
+        })
     }
 
     fn additive_try_from(cursor: &mut Cursor) -> Option<Self> {
-        let bak = cursor.clone();
-
-        match cursor.next().map(|t| t.kind) {
-            Some(TokenKind::Plus) => Some(Self::ArithAdd),
-            Some(TokenKind::Minus) => Some(Self::ArithSub),
-            _ => {
-                *cursor = bak;
-                None
-            }
-        }
+        cursor.advance_if_some(|k| match k {
+            TokenKind::Plus => Some(Self::ArithAdd),
+            TokenKind::Minus => Some(Self::ArithSub),
+            _ => None,
+        })
     }
 
     fn multiplicative_try_from(cursor: &mut Cursor) -> Option<Self> {
-        let bak = cursor.clone();
-
-        match cursor.next().map(|t| t.kind) {
-            Some(TokenKind::Star) => Some(Self::ArithMul),
-            Some(TokenKind::Slash) => Some(Self::ArithDiv),
-            Some(TokenKind::Percent) => Some(Self::ArithMod),
-            _ => {
-                *cursor = bak;
-                None
-            }
-        }
+        cursor.advance_if_some(|k| match k {
+            TokenKind::Star => Some(Self::ArithMul),
+            TokenKind::Slash => Some(Self::ArithDiv),
+            TokenKind::Percent => Some(Self::ArithMod),
+            _ => None,
+        })
     }
 
     fn bitwise_and_try_from(cursor: &mut Cursor) -> Option<Self> {
-        let bak = cursor.clone();
-
-        match cursor.next().map(|t| t.kind) {
-            Some(TokenKind::And) => Some(Self::BitWsAnd),
-            _ => {
-                *cursor = bak;
-                None
-            }
-        }
+        cursor.advance_if_some(|k| match k {
+            TokenKind::And => Some(Self::BitWsAnd),
+            _ => None,
+        })
     }
 
     fn bitwise_or_try_from(cursor: &mut Cursor) -> Option<Self> {
-        let bak = cursor.clone();
-
-        match cursor.next().map(|t| t.kind) {
-            Some(TokenKind::Or) => Some(Self::BitWsOr),
-            _ => {
-                *cursor = bak;
-                None
-            }
-        }
+        cursor.advance_if_some(|k| match k {
+            TokenKind::Or => Some(Self::BitWsOr),
+            _ => None,
+        })
     }
 
     fn bitwise_xor_try_from(cursor: &mut Cursor) -> Option<Self> {
-        let bak = cursor.clone();
-
-        match cursor.next().map(|t| t.kind) {
-            Some(TokenKind::Caret) => Some(Self::BitWsXor),
-            _ => {
-                *cursor = bak;
-                None
-            }
-        }
+        cursor.advance_if_some(|k| match k {
+            TokenKind::Caret => Some(Self::BitWsXor),
+            _ => None,
+        })
     }
 
     fn bitshift_try_from(cursor: &mut Cursor) -> Option<Self> {
-        let bak = cursor.clone();
-
-        match cursor.next().map(|t| t.kind) {
-            Some(TokenKind::LtLt) => Some(Self::BitShLeft),
-            Some(TokenKind::GtGt) => Some(Self::BitShRight),
-            _ => {
-                *cursor = bak;
-                None
-            }
-        }
+        cursor.advance_if_some(|k| match k {
+            TokenKind::LtLt => Some(Self::BitShLeft),
+            TokenKind::GtGt => Some(Self::BitShRight),
+            _ => None,
+        })
     }
 }
 
@@ -223,16 +173,13 @@ pub enum AstData<'a> {
 
 pub type AstKey = IndexKey;
 
+#[derive(Default)]
 pub struct Ast<'a> {
     root: Option<AstKey>,
     data: IndexList<AstData<'a>>,
 }
 
 impl<'a> Ast<'a> {
-    fn new() -> Ast<'a> {
-        Ast { root: None, data: IndexList::new() }
-    }
-
     fn push(&mut self, data: AstData<'a>) -> AstKey {
         self.data.push(data)
     }
@@ -257,18 +204,19 @@ impl<'a> Ast<'a> {
                 block_items.iter().for_each(|key| self.traverse(*key, depth + 1, keys));
             }
             AstData::BlockItem(block_item) => match block_item {
-                BlockItem::Decl(decl) => match decl {
-                    Decl { value: Some(key), .. } => self.traverse(*key, depth + 1, keys),
-                    Decl { .. } => (),
-                },
-                BlockItem::Stmt(stmt) => match stmt {
-                    Statement::Return(key) => self.traverse(*key, depth + 1, keys),
-                    Statement::Exp(key) => self.traverse(*key, depth + 1, keys),
+                BlockItem::Decl(decl) => {
+                    if let Decl { value: Some(key), .. } = *decl {
+                        self.traverse(key, depth + 1, keys);
+                    }
+                }
+                BlockItem::Stmt(stmt) => match *stmt {
+                    Statement::Return(key) => self.traverse(key, depth + 1, keys),
+                    Statement::Exp(key) => self.traverse(key, depth + 1, keys),
                     Statement::If { cond, ifb, elseb } => {
-                        self.traverse(*cond, depth + 1, keys);
-                        self.traverse(*ifb, depth + 2, keys);
+                        self.traverse(cond, depth + 1, keys);
+                        self.traverse(ifb, depth + 2, keys);
                         if let Some(elseb) = elseb {
-                            self.traverse(*elseb, depth + 2, keys);
+                            self.traverse(elseb, depth + 2, keys);
                         }
                     }
                 },
@@ -342,9 +290,22 @@ impl<'a> Cursor<'a> {
     fn peek(&self) -> Option<Token<'a>> {
         self.clone().next()
     }
+
+    /// peek, run `predicate` and advance if Some()
+    fn advance_if_some<T>(
+        &mut self,
+        mut predicate: impl FnMut(TokenKind) -> Option<T>,
+    ) -> Option<T> {
+        let kind = self.peek().map(|t| t.kind)?;
+
+        predicate(kind).inspect(|_| {
+            self.next();
+        })
+    }
 }
 
-/// Match `TokenKind` or return
+/// if `token` is of `kind`  
+/// fn (`Token`) -> `Option<Token>`
 macro_rules! match_kind {
     ($token:expr, $kind:pat $(,)?) => {{
         let _token = $token;
@@ -355,7 +316,8 @@ macro_rules! match_kind {
     }};
 }
 
-/// Match `value` or return
+/// if `token` is with `value`  
+/// fn (`Token`) -> `Option<Token>`
 macro_rules! match_value {
     ($token:expr, $value:expr $(,)?) => {{
         let _token = $token;
@@ -439,12 +401,12 @@ fn parse_bitshift_exp<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<
 
 /// <relational_exp> ::= <bitshift_exp> { ("<" | ">" | "<=" | ">=") <bitshift_exp> }
 fn parse_relational_exp<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
-    parse_binop(ast, cursor, parse_bitshift_exp, BinOpKind::relational_diff_try_from)
+    parse_binop(ast, cursor, parse_bitshift_exp, BinOpKind::relational_try_from)
 }
 
 /// <equality_exp> ::= <relational_exp> { ("!=" | "==") <relational_exp> }
 fn parse_equality_exp<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
-    parse_binop(ast, cursor, parse_relational_exp, BinOpKind::relational_eq_try_from)
+    parse_binop(ast, cursor, parse_relational_exp, BinOpKind::equality_try_from)
 }
 
 /// <bitwise_and_exp> ::= <equality_exp> { "&" <equality_exp> }
@@ -485,7 +447,6 @@ fn parse_ternary_exp<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<A
             match_kind!(cursor.next().unwrap(), TokenKind::Colon).unwrap();
 
             let kelseb = parse_ternary_exp(ast, cursor).unwrap();
-
             let ternary =
                 AstData::Exp(Expression::Ternary { cond: kexp, ifb: kifb, elseb: kelseb });
 
@@ -544,13 +505,14 @@ fn parse_statement<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<Ast
             match_kind!(cursor.next().unwrap(), TokenKind::CloseParen).unwrap();
 
             let kifb = parse_statement(ast, cursor).unwrap();
-            let mut kelseb = None;
+            let kelseb = match cursor.peek() {
+                Some(Token { value: "else", .. }) => {
+                    cursor.next();
 
-            if matches!(cursor.peek(), Some(Token { value: "else", .. })) {
-                cursor.next();
-
-                kelseb = Some(parse_statement(ast, cursor).unwrap());
-            }
+                    Some(parse_statement(ast, cursor).unwrap())
+                }
+                _ => None,
+            };
 
             AstData::BlockItem(BlockItem::Stmt(Statement::If {
                 cond: kcond,
@@ -570,19 +532,20 @@ fn parse_statement<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<Ast
     Some(ast.push(stmt))
 }
 
-/// <declaration> ::= "int" <id> [ = <exp> ] ";"
+/// <decl> ::= "int" <id> [ = <exp> ] ";"
 fn parse_decl<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
     let token = cursor.peek();
     //eprintfn!("{token:?}");
 
     match_value!(token.unwrap(), "int").and_then(|_| {
         cursor.next();
-        let ident = match_kind!(cursor.next().unwrap(), TokenKind::Ident).unwrap();
 
+        let ident = match_kind!(cursor.next().unwrap(), TokenKind::Ident).unwrap();
         let value = match_kind!(cursor.peek().unwrap(), TokenKind::Eq).and_then(|_| {
             cursor.next();
+            let kexp = parse_exp(ast, cursor).unwrap();
 
-            Some(parse_exp(ast, cursor).unwrap())
+            Some(kexp)
         });
 
         match_kind!(cursor.next().unwrap(), TokenKind::Semicolon).unwrap();
@@ -593,7 +556,7 @@ fn parse_decl<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> 
     })
 }
 
-/// <block-item> ::= <statement> | <declaration>
+/// <block_item> ::= <statement> | <decl>
 fn parse_block_item<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
     if let Some(kdecl) = parse_decl(ast, cursor) {
         return Some(kdecl);
@@ -606,7 +569,7 @@ fn parse_block_item<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<As
     None
 }
 
-/// <function> ::= "int" <id> "(" ")" "{" { <block-item> } "}"
+/// <function> ::= "int" <ident> "(" ")" "{" { <block-item> } "}"
 fn parse_function<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
     match_value!(cursor.next().unwrap(), "int").unwrap();
 
@@ -620,16 +583,15 @@ fn parse_function<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstK
 
     loop {
         match cursor.peek()? {
-            Token { kind: TokenKind::CloseBrace, .. } => {
-                cursor.next();
-                break;
-            }
+            Token { kind: TokenKind::CloseBrace, .. } => break,
             _ => {
                 let kblock_item = parse_block_item(ast, cursor).unwrap();
                 block_items.push(kblock_item);
             }
         }
     }
+
+    match_kind!(cursor.next().unwrap(), TokenKind::CloseBrace).unwrap();
 
     let func = AstData::Func { name: token, block_items };
 
@@ -648,7 +610,7 @@ fn parse_program<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKe
 /// TODO: better AST traversal & pretty-printing
 /// TODO: optimize Ast e IndexList
 pub fn parse<'a>(tokens: &'a [Token]) -> Option<Ast<'a>> {
-    let mut ast = Ast::new();
+    let mut ast = Ast::default();
     let mut cursor = Cursor::new(tokens);
 
     let kprog = parse_program(&mut ast, &mut cursor).unwrap();

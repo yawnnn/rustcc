@@ -2,6 +2,7 @@
 
 use crate::common::*;
 use crate::parse;
+use crate::parse::AstData;
 use crate::parse::{BinOpKind, UnOpKind};
 
 pub enum Literal {
@@ -72,7 +73,7 @@ pub struct Scope {
 
 impl Scope {
     fn new(name: &str) -> Self {
-        Self { name: name.to_owned(), vars: IndexList::new() }
+        Self { name: name.to_owned(), ..Default::default() }
     }
 }
 
@@ -126,10 +127,10 @@ impl State {
 fn check_exp(ast: &parse::Ast, state: &mut State, ir: &mut IR, exp: &parse::Expression) -> Exp {
     match *exp {
         parse::Expression::BinOp { kind, op1, op2 } => {
-            let parse::AstData::Exp(exp1) = ast.get(op1) else {
+            let AstData::Exp(exp1) = ast.get(op1) else {
                 panic!();
             };
-            let parse::AstData::Exp(exp2) = ast.get(op2) else {
+            let AstData::Exp(exp2) = ast.get(op2) else {
                 panic!();
             };
             let exp1 = check_exp(ast, state, ir, exp1);
@@ -137,18 +138,18 @@ fn check_exp(ast: &parse::Ast, state: &mut State, ir: &mut IR, exp: &parse::Expr
             Exp::BinOp(kind, Box::new(exp1), Box::new(exp2))
         }
         parse::Expression::UnOp { kind, op } => {
-            let parse::AstData::Exp(exp) = ast.get(op) else {
+            let AstData::Exp(exp) = ast.get(op) else {
                 panic!();
             };
             let exp = check_exp(ast, state, ir, exp);
             Exp::UnOp(kind, Box::new(exp))
         }
-        parse::Expression::Var(name)=> {
+        parse::Expression::Var(name) => {
             let var = state.get_local(name.value).unwrap();
             Exp::Var(var)
         }
         parse::Expression::Assignment { name, value } => {
-            let parse::AstData::Exp(exp) = ast.get(value) else {
+            let AstData::Exp(exp) = ast.get(value) else {
                 panic!();
             };
             let exp = check_exp(ast, state, ir, exp);
@@ -160,17 +161,17 @@ fn check_exp(ast: &parse::Ast, state: &mut State, ir: &mut IR, exp: &parse::Expr
             Exp::Literal(Literal::I32(value))
         }
         parse::Expression::Ternary { cond, ifb, elseb } => {
-            let parse::AstData::Exp(cond) = ast.get(cond) else {
+            let AstData::Exp(cond) = ast.get(cond) else {
                 panic!();
             };
             let cond = check_exp(ast, state, ir, cond);
 
-            let parse::AstData::Exp(ifb) = ast.get(ifb) else {
+            let AstData::Exp(ifb) = ast.get(ifb) else {
                 panic!();
             };
             let ifb = check_exp(ast, state, ir, ifb);
 
-            let parse::AstData::Exp(elseb) = ast.get(elseb) else {
+            let AstData::Exp(elseb) = ast.get(elseb) else {
                 panic!();
             };
             let elseb = check_exp(ast, state, ir, elseb);
@@ -183,7 +184,7 @@ fn check_exp(ast: &parse::Ast, state: &mut State, ir: &mut IR, exp: &parse::Expr
 fn check_stmt(ast: &parse::Ast, state: &mut State, ir: &mut IR, stmt: &parse::Statement) -> Stmt {
     match stmt {
         parse::Statement::Return(kexp) => {
-            let parse::AstData::Exp(exp) = ast.get(*kexp) else {
+            let AstData::Exp(exp) = ast.get(*kexp) else {
                 panic!();
             };
             let exp = check_exp(ast, state, ir, exp);
@@ -191,7 +192,7 @@ fn check_stmt(ast: &parse::Ast, state: &mut State, ir: &mut IR, stmt: &parse::St
             Stmt::Return(exp)
         }
         parse::Statement::Exp(kexp) => {
-            let parse::AstData::Exp(exp) = ast.get(*kexp) else {
+            let AstData::Exp(exp) = ast.get(*kexp) else {
                 panic!();
             };
             let exp = check_exp(ast, state, ir, exp);
@@ -199,22 +200,20 @@ fn check_stmt(ast: &parse::Ast, state: &mut State, ir: &mut IR, stmt: &parse::St
             Stmt::Exp(exp)
         }
         parse::Statement::If { cond, ifb, elseb } => {
-            let parse::AstData::Exp(exp) = ast.get(*cond) else {
+            let AstData::Exp(exp) = ast.get(*cond) else {
                 panic!();
             };
             let exp = check_exp(ast, state, ir, exp);
 
-            let parse::AstData::BlockItem(parse::BlockItem::Stmt(ifb)) = ast.get(*ifb) else {
+            let AstData::BlockItem(parse::BlockItem::Stmt(ifb)) = ast.get(*ifb) else {
                 panic!();
             };
             let ifb = Box::new(check_stmt(ast, state, ir, ifb));
 
             let elseb = elseb.map(|elseb| {
-                let parse::AstData::BlockItem(parse::BlockItem::Stmt(elseb)) = ast.get(elseb)
-                else {
+                let AstData::BlockItem(parse::BlockItem::Stmt(elseb)) = ast.get(elseb) else {
                     panic!();
                 };
-
                 Box::new(check_stmt(ast, state, ir, elseb))
             });
 
@@ -224,12 +223,11 @@ fn check_stmt(ast: &parse::Ast, state: &mut State, ir: &mut IR, stmt: &parse::St
 }
 
 fn check_decl(ast: &parse::Ast, state: &mut State, ir: &mut IR, decl: &parse::Decl) -> Decl {
-    let exp = decl.value.and_then(|kexp| {
-        let parse::AstData::Exp(exp) = ast.get(kexp) else {
+    let exp = decl.value.map(|kexp| {
+        let AstData::Exp(exp) = ast.get(kexp) else {
             panic!();
         };
-
-        Some(check_exp(ast, state, ir, exp))
+        check_exp(ast, state, ir, exp)
     });
     let var = state.new_local(decl.name.value).unwrap();
 
@@ -260,7 +258,7 @@ fn check_func<'a>(
     let body = block_items
         .iter()
         .map(|k| {
-            let parse::AstData::BlockItem(block_item) = ast.get(*k) else {
+            let AstData::BlockItem(block_item) = ast.get(*k) else {
                 panic!();
             };
             check_block_item(ast, state, ir, block_item)
@@ -271,16 +269,12 @@ fn check_func<'a>(
 }
 
 pub fn check<'a>(ast: &'a parse::Ast) -> IR<'a> {
-    let mut state: State = Default::default();
-    let mut ir: IR = Default::default();
+    let mut state = State::default();
+    let mut ir = IR::default();
 
     for (data, _) in ast.iter() {
-        #[allow(clippy::single_match)]
-        match data {
-            parse::AstData::Func { name, block_items } => {
-                check_func(ast, &mut state, &mut ir, name.value, block_items);
-            }
-            _ => (),
+        if let AstData::Func { name, block_items } = data {
+            check_func(ast, &mut state, &mut ir, name.value, block_items);
         }
     }
 

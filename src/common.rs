@@ -2,7 +2,10 @@
 #![allow(unused_imports)]
 #![allow(unused_macros)]
 
-use std::{fmt, ops::{self, Index}};
+use std::{
+    fmt,
+    ops::{self, Index},
+};
 
 #[derive(Clone, Copy)]
 pub struct IndexKey(usize);
@@ -19,14 +22,16 @@ impl fmt::Debug for IndexKey {
     }
 }
 
-#[derive(Default)]
 pub struct IndexList<T>(Vec<T>);
 
-impl<T> IndexList<T> {
-    pub fn new() -> Self {
-        IndexList(Vec::new())
+// #[derive(Default)] requires T: Default, but i dont actually need that
+impl<T> Default for IndexList<T> {
+    fn default() -> Self {
+        Self(Vec::new())
     }
+}
 
+impl<T> IndexList<T> {
     pub fn push(&mut self, value: T) -> IndexKey {
         let key = self.0.len();
         self.0.push(value);
