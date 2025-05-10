@@ -184,7 +184,6 @@ impl BinOpKind {
     }
 }
 
-
 #[derive(Debug)]
 pub enum Expression<'a> {
     BinOp(BinOpKind, AstKey, AstKey),
@@ -192,20 +191,33 @@ pub enum Expression<'a> {
     Var { name: Token<'a> },
     Assignment { name: Token<'a>, value: AstKey },
     Literal(Token<'a>),
+    Ternary(AstKey, AstKey, AstKey),
 }
 
 #[derive(Debug)]
-pub enum Statement<'a> {
+pub enum Statement {
     Return(AstKey),
-    Decl { name: Token<'a>, value: Option<AstKey> },
     Exp(AstKey),
+    If { cond: AstKey, ifb: AstKey, elseb: Option<AstKey> },
+}
+
+#[derive(Debug)]
+pub struct Decl<'a> {
+    pub name: Token<'a>,
+    pub value: Option<AstKey>,
+}
+
+#[derive(Debug)]
+pub enum BlockItem<'a> {
+    Stmt(Statement),
+    Decl(Decl<'a>),
 }
 
 #[derive(Debug)]
 pub enum AstData<'a> {
     Prog(AstKey),
-    Func { name: Token<'a>, statements: Vec<AstKey> },
-    Stmt(Statement<'a>),
+    Func { name: Token<'a>, block_items: Vec<AstKey> },
+    BlockItem(BlockItem<'a>),
     Exp(Expression<'a>),
 }
 
@@ -241,14 +253,25 @@ impl<'a> Ast<'a> {
             AstData::Prog(key) => {
                 self.traverse(*key, depth + 1, keys);
             }
-            AstData::Func { statements, .. } => {
-                statements.iter().for_each(|key| self.traverse(*key, depth + 1, keys));
+            AstData::Func { block_items, .. } => {
+                block_items.iter().for_each(|key| self.traverse(*key, depth + 1, keys));
             }
-            AstData::Stmt(stmt) => match stmt {
-                Statement::Return(key) => self.traverse(*key, depth + 1, keys),
-                Statement::Decl { value: Some(key), .. } => self.traverse(*key, depth + 1, keys),
-                Statement::Decl { .. } => (),
-                Statement::Exp(key) => self.traverse(*key, depth + 1, keys),
+            AstData::BlockItem(block_item) => match block_item {
+                BlockItem::Decl(decl) => match decl {
+                    Decl { value: Some(key), .. } => self.traverse(*key, depth + 1, keys),
+                    Decl { .. } => (),
+                },
+                BlockItem::Stmt(stmt) => match stmt {
+                    Statement::Return(key) => self.traverse(*key, depth + 1, keys),
+                    Statement::Exp(key) => self.traverse(*key, depth + 1, keys),
+                    Statement::If { cond, ifb, elseb } => {
+                        self.traverse(*cond, depth + 1, keys);
+                        self.traverse(*ifb, depth + 2, keys);
+                        if let Some(elseb) = elseb {
+                            self.traverse(*elseb, depth + 2, keys);
+                        }
+                    }
+                },
             },
             AstData::Exp(exp) => match exp {
                 Expression::BinOp(_, key1, key2) => {
@@ -259,6 +282,11 @@ impl<'a> Ast<'a> {
                 Expression::Var { .. } => (),
                 Expression::Assignment { value: key, .. } => self.traverse(*key, depth + 1, keys),
                 Expression::Literal(_) => (),
+                Expression::Ternary(cond, trueb, falseb) => {
+                    self.traverse(*cond, depth + 1, keys);
+                    self.traverse(*trueb, depth + 2, keys);
+                    self.traverse(*falseb, depth + 2, keys);
+                }
             },
         }
     }
@@ -278,11 +306,8 @@ impl AstData<'_> {
     fn format_indent(&self, f: &mut fmt::Formatter<'_>, depth: usize) -> fmt::Result {
         let print = format!("{:#?}", self);
         let padding = "\t".repeat(depth);
-        let print_indent = print
-            .lines()
-            .map(|line| format!("{}{}", padding, line))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let print_indent =
+            print.lines().map(|line| format!("{}{}", padding, line)).collect::<Vec<_>>().join("\n");
         writeln!(f, "{}", print_indent)
     }
 }
@@ -447,7 +472,29 @@ fn parse_logical_or_exp<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Optio
     parse_binop(ast, cursor, parse_logical_and_exp, BinOpKind::logical_or_try_from)
 }
 
-/// <exp> ::= <id> "=" <exp> | <logical_or_exp>
+/// <ternary_exp> ::= <logical-or-exp> [ "?" <exp> ":" <ternary_exp> ]
+fn parse_ternary_exp<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
+    let kexp = parse_logical_or_exp(ast, cursor).unwrap();
+
+    match cursor.peek() {
+        Some(Token { kind: TokenKind::Question, .. }) => {
+            cursor.next();
+
+            let ktrueb = parse_exp(ast, cursor).unwrap();
+
+            match_kind!(cursor.next().unwrap(), TokenKind::Colon).unwrap();
+
+            let kfalseb = parse_ternary_exp(ast, cursor).unwrap();
+
+            let ternary = AstData::Exp(Expression::Ternary(kexp, ktrueb, kfalseb));
+
+            Some(ast.push(ternary))
+        }
+        _ => Some(kexp),
+    }
+}
+
+/// <exp> ::= <id> "=" <exp> | <ternary_exp>
 fn parse_exp<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
     let bak = cursor.clone();
     let first = cursor.next().unwrap();
@@ -464,49 +511,101 @@ fn parse_exp<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
         }
         _ => {
             *cursor = bak;
-            parse_logical_or_exp(ast, cursor)
+            parse_ternary_exp(ast, cursor)
         }
     }
 }
 
-/// <statement> ::= "return" <exp> ";" | <exp> ";" | "int" <id> [ = <exp> ] ";"
+/// <statement> ::=
+///     "return" <exp> ";"
+///     | "if" "(" <exp> ")" <statement> [ "else" <statement> ]
+///     | <exp> ";"
 fn parse_statement<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
-    let token = cursor.peek().unwrap();
-
+    let token = cursor.peek();
     //eprintfn!("{token:?}");
 
-    let stmt = match token.value {
+    let stmt = match token.unwrap().value {
         "return" => {
             cursor.next();
             let kexp = parse_exp(ast, cursor).unwrap();
 
-            AstData::Stmt(Statement::Return(kexp))
-        }
-        "int" => {
-            cursor.next();
-            let ident = match_kind!(cursor.next().unwrap(), TokenKind::Ident).unwrap();
-            let mut value = None;
+            match_kind!(cursor.next().unwrap(), TokenKind::Semicolon).unwrap();
 
-            if match_kind!(cursor.peek().unwrap(), TokenKind::Eq).is_some() {
+            AstData::BlockItem(BlockItem::Stmt(Statement::Return(kexp)))
+        }
+        "if" => {
+            cursor.next();
+
+            match_kind!(cursor.next().unwrap(), TokenKind::OpenParen).unwrap();
+
+            let kcond = parse_exp(ast, cursor).unwrap();
+
+            match_kind!(cursor.next().unwrap(), TokenKind::CloseParen).unwrap();
+
+            let kifb = parse_statement(ast, cursor).unwrap();
+            let mut kelseb = None;
+
+            if matches!(cursor.peek(), Some(Token { value: "else", .. })) {
                 cursor.next();
-                value = Some(parse_exp(ast, cursor).unwrap());
+
+                kelseb = Some(parse_statement(ast, cursor).unwrap());
             }
 
-            AstData::Stmt(Statement::Decl { name: ident, value })
+            AstData::BlockItem(BlockItem::Stmt(Statement::If {
+                cond: kcond,
+                ifb: kifb,
+                elseb: kelseb,
+            }))
         }
         _ => {
             let kexp = parse_exp(ast, cursor).unwrap();
 
-            AstData::Stmt(Statement::Exp(kexp))
+            match_kind!(cursor.next().unwrap(), TokenKind::Semicolon).unwrap();
+
+            AstData::BlockItem(BlockItem::Stmt(Statement::Exp(kexp)))
         }
     };
-
-    match_kind!(cursor.next().unwrap(), TokenKind::Semicolon).unwrap();
 
     Some(ast.push(stmt))
 }
 
-/// <function> ::= "int" <id> "(" ")" "{" { <statement> } "}"
+/// <declaration> ::= "int" <id> [ = <exp> ] ";"
+fn parse_decl<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
+    let token = cursor.peek();
+    //eprintfn!("{token:?}");
+
+    match_value!(token.unwrap(), "int").and_then(|_| {
+        cursor.next();
+        let ident = match_kind!(cursor.next().unwrap(), TokenKind::Ident).unwrap();
+
+        let value = match_kind!(cursor.peek().unwrap(), TokenKind::Eq).and_then(|_| {
+            cursor.next();
+
+            Some(parse_exp(ast, cursor).unwrap())
+        });
+
+        match_kind!(cursor.next().unwrap(), TokenKind::Semicolon).unwrap();
+
+        let decl = AstData::BlockItem(BlockItem::Decl(Decl { name: ident, value }));
+
+        Some(ast.push(decl))
+    })
+}
+
+/// <block-item> ::= <statement> | <declaration>
+fn parse_block_item<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
+    if let Some(kdecl) = parse_decl(ast, cursor) {
+        return Some(kdecl);
+    }
+
+    if let Some(kstmt) = parse_statement(ast, cursor) {
+        return Some(kstmt);
+    }
+
+    None
+}
+
+/// <function> ::= "int" <id> "(" ")" "{" { <block-item> } "}"
 fn parse_function<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
     match_value!(cursor.next().unwrap(), "int").unwrap();
 
@@ -516,7 +615,7 @@ fn parse_function<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstK
     match_kind!(cursor.next().unwrap(), TokenKind::CloseParen).unwrap();
     match_kind!(cursor.next().unwrap(), TokenKind::OpenBrace).unwrap();
 
-    let mut statements = Vec::new();
+    let mut block_items = Vec::new();
 
     loop {
         match cursor.peek()? {
@@ -525,13 +624,13 @@ fn parse_function<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstK
                 break;
             }
             _ => {
-                let kstmt = parse_statement(ast, cursor).unwrap();
-                statements.push(kstmt);
+                let kblock_item = parse_block_item(ast, cursor).unwrap();
+                block_items.push(kblock_item);
             }
         }
     }
 
-    let func = AstData::Func { name: token, statements };
+    let func = AstData::Func { name: token, block_items };
 
     Some(ast.push(func))
 }
@@ -559,3 +658,12 @@ pub fn parse<'a>(tokens: &'a [Token]) -> Option<Ast<'a>> {
 
     Some(ast)
 }
+
+// arithmetic * ;; / ;; % --> + ;; ,
+// shift: <<, >>
+// relational: < ;; <= ;; > ;; >= --> == ;; !=
+// bitwise: & --> ^ --> |
+// logical or: && --> ||
+// ternary: ?:
+// assignment: = ;; += ;; -= ;; *= ;; /= ;; %= ;; <<= >>= &= ^= |=
+// comma: ,

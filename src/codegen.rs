@@ -1,7 +1,7 @@
 use std::{cell::Cell, ops};
 
 use crate::check::*;
-use crate::parse::*;
+use crate::parse::{BinOpKind, UnOpKind};
 
 // what about something like Cow?
 struct Assembly(Vec<String>);
@@ -275,6 +275,9 @@ fn gen_exp(exp: &Exp) -> Assembly {
         Exp::Var(var) => {
             output += format!("mov -{}(%rbp), %rax", var.offset());
         }
+        Exp::Ternary(cond, trueb, falseb) => {
+            todo!()
+        }
     }
 
     output
@@ -288,23 +291,38 @@ fn gen_stmt(stmt: &Stmt, ret_lable: &str) -> Assembly {
             output += gen_exp(exp);
             output += format!("jmp {ret_lable}");
         }
-        Stmt::Decl(_ref, value) => {
-            match value {
-                Some(exp) => {
-                    output += gen_exp(exp);
-                    output += "push %rax";
-                }
-                _ => {
-                    output += "push $0";
-                }
-            }
-        }
         Stmt::Exp(exp) => {
             output += gen_exp(exp);
+        }
+        Stmt::If(exp, ifb, elseb) => {
+            todo!()
         }
     }
 
     output
+}
+
+fn gen_decl(decl: &Decl) -> Assembly {
+    let mut output = Assembly::new();
+
+    match &decl.1 {
+        Some(exp) => {
+            output += gen_exp(exp);
+            output += "push %rax";
+        }
+        _ => {
+            output += "push $0";
+        }
+    }
+
+    output
+}
+
+fn gen_block_item(block_item: &BlockItem, ret_lable: &str) -> Assembly {
+    match block_item {
+        BlockItem::Delc(decl) => gen_decl(decl),
+        BlockItem::Stmt(stmt) => gen_stmt(stmt, ret_lable),
+    }
 }
 
 fn generate_assembly(ir: IR) -> Assembly {
@@ -312,7 +330,7 @@ fn generate_assembly(ir: IR) -> Assembly {
 
     for node in ir.into_iter() {
         match node {
-            IRNode::Func(name, stmts) => {
+            IRNode::Func(name, block_items) => {
                 output += format!(".globl {name}");
                 output += format!("{name}:");
                 output += "push %rbp";
@@ -320,9 +338,11 @@ fn generate_assembly(ir: IR) -> Assembly {
 
                 let ret_label = gen_unique_label();
 
-                stmts.iter().for_each(|stmt| output += gen_stmt(stmt, &ret_label));
+                block_items
+                    .iter()
+                    .for_each(|block_item| output += gen_block_item(block_item, &ret_label));
 
-                if !matches!(stmts.last(), Some(Stmt::Return(_))) {
+                if !matches!(block_items.last(), Some(BlockItem::Stmt(Stmt::Return(_)))) {
                     output += "mov $0, %rax";
                 }
 

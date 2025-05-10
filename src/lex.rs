@@ -10,6 +10,7 @@ pub enum TokenKind {
     OpenParen,  // (
     CloseParen, // )
     Semicolon,  // ;
+    Colon,      // :
     Minus,      // -
     Tilde,      // ~
     Not,        // !
@@ -31,6 +32,7 @@ pub enum TokenKind {
     Geq,        // >=
     Percent,    // %
     Caret,      // ^
+    Question,   // ?
 }
 
 #[derive(Clone, Copy)]
@@ -122,6 +124,7 @@ impl<'a> Lexer<'a> {
             '(' => OpenParen,
             ')' => CloseParen,
             ';' => Semicolon,
+            ':' => Colon,
             '~' => Tilde,
             '!' => self.predicate_or(
                 |c| match c {
@@ -173,6 +176,7 @@ impl<'a> Lexer<'a> {
             ),
             '%' => Percent,
             '^' => Caret,
+            '?' => Question,
             c if c.is_numeric() => {
                 self.advance_while(char::is_numeric);
                 Literal

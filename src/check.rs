@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
 use crate::common::*;
-use crate::parse::*;
+use crate::parse;
+use crate::parse::{BinOpKind, UnOpKind};
 
 pub enum Literal {
     I32(i32),
@@ -28,16 +29,24 @@ pub enum Exp {
     Var(StackRef),
     Assignment(StackRef, Box<Exp>),
     Literal(Literal),
+    Ternary(Box<Exp>, Box<Exp>, Box<Exp>)
 }
 
 pub enum Stmt {
     Return(Exp),
-    Decl(StackRef, Option<Exp>),
     Exp(Exp),
+    If(Exp, Box<Stmt>, Option<Box<Stmt>>),
+}
+
+pub struct Decl(pub StackRef, pub Option<Exp>);
+
+pub enum BlockItem {
+    Delc(Decl),
+    Stmt(Stmt),
 }
 
 pub enum IRNode<'a> {
-    Func(&'a str, Vec<Stmt>),
+    Func(&'a str, Vec<BlockItem>),
 }
 
 /// Intermediate representation
@@ -114,105 +123,161 @@ impl State {
     }
 }
 
-fn check_exp(ast: &Ast, state: &mut State, _ir: &mut IR, exp: &Expression) -> Exp {
+fn check_exp(ast: &parse::Ast, state: &mut State, ir: &mut IR, exp: &parse::Expression) -> Exp {
     match exp {
-        Expression::BinOp(kind, kop1, kop2) => {
-            let AstData::Exp(exp1) = ast.get(*kop1) else {
+        &parse::Expression::BinOp(kind, kop1, kop2) => {
+            let parse::AstData::Exp(exp1) = ast.get(kop1) else {
                 panic!();
             };
-            let AstData::Exp(exp2) = ast.get(*kop2) else {
+            let parse::AstData::Exp(exp2) = ast.get(kop2) else {
                 panic!();
             };
-            let exp1 = check_exp(ast, state, _ir, exp1);
-            let exp2 = check_exp(ast, state, _ir, exp2);
-            Exp::BinOp(*kind, Box::new(exp1), Box::new(exp2))
+            let exp1 = check_exp(ast, state, ir, exp1);
+            let exp2 = check_exp(ast, state, ir, exp2);
+            Exp::BinOp(kind, Box::new(exp1), Box::new(exp2))
         }
-        Expression::UnOp(kind, kop) => {
-            let AstData::Exp(exp) = ast.get(*kop) else {
+        &parse::Expression::UnOp(kind, kop) => {
+            let parse::AstData::Exp(exp) = ast.get(kop) else {
                 panic!();
             };
-            let exp = check_exp(ast, state, _ir, exp);
-            Exp::UnOp(*kind, Box::new(exp))
+            let exp = check_exp(ast, state, ir, exp);
+            Exp::UnOp(kind, Box::new(exp))
         }
-        Expression::Var { name } => {
+        &parse::Expression::Var { name } => {
             let var = state.get_local(name.value).unwrap();
             Exp::Var(var)
         }
-        Expression::Assignment { name, value } => {
-            let AstData::Exp(exp) = ast.get(*value) else {
+        &parse::Expression::Assignment { name, value } => {
+            let parse::AstData::Exp(exp) = ast.get(value) else {
                 panic!();
             };
-            let exp = check_exp(ast, state, _ir, exp);
+            let exp = check_exp(ast, state, ir, exp);
             let var = state.get_local(name.value).unwrap();
             Exp::Assignment(var, Box::new(exp))
         }
-        Expression::Literal(literal) => {
+        &parse::Expression::Literal(literal) => {
             let value = literal.value.parse::<i32>().unwrap();
             Exp::Literal(Literal::I32(value))
+        }
+        &parse::Expression::Ternary(cond, trueb, falseb) => {
+            let parse::AstData::Exp(cond) = ast.get(cond) else {
+                panic!();
+            };
+            let cond = check_exp(ast, state, ir, cond);
+
+            let parse::AstData::Exp(trueb) = ast.get(trueb) else {
+                panic!();
+            };
+            let trueb = check_exp(ast, state, ir, trueb);
+
+            let parse::AstData::Exp(falseb) = ast.get(falseb) else {
+                panic!();
+            };
+            let falseb = check_exp(ast, state, ir, falseb);
+
+            Exp::Ternary(Box::new(cond), Box::new(trueb), Box::new(falseb))
         }
     }
 }
 
-fn check_stmt(ast: &Ast, state: &mut State, ir: &mut IR, stmt: &Statement) -> Stmt {
+fn check_stmt(ast: &parse::Ast, state: &mut State, ir: &mut IR, stmt: &parse::Statement) -> Stmt {
     match stmt {
-        Statement::Return(kexp) => {
-            let AstData::Exp(exp) = ast.get(*kexp) else {
+        parse::Statement::Return(kexp) => {
+            let parse::AstData::Exp(exp) = ast.get(*kexp) else {
                 panic!();
             };
             let exp = check_exp(ast, state, ir, exp);
+
             Stmt::Return(exp)
         }
-        Statement::Decl { name, value } => {
-            let exp = value.and_then(|kexp| {
-                let AstData::Exp(exp) = ast.get(kexp) else {
-                    panic!();
-                };
-                Some(check_exp(ast, state, ir, exp))
-            });
-            let var = state.new_local(name.value).unwrap();
-            Stmt::Decl(var, exp)
-        }
-        Statement::Exp(kexp) => {
-            let AstData::Exp(exp) = ast.get(*kexp) else {
+        parse::Statement::Exp(kexp) => {
+            let parse::AstData::Exp(exp) = ast.get(*kexp) else {
                 panic!();
             };
             let exp = check_exp(ast, state, ir, exp);
+
             Stmt::Exp(exp)
         }
+        parse::Statement::If { cond, ifb, elseb } => {
+            let parse::AstData::Exp(exp) = ast.get(*cond) else {
+                panic!();
+            };
+            let exp = check_exp(ast, state, ir, exp);
+
+            let parse::AstData::BlockItem(parse::BlockItem::Stmt(ifb)) = ast.get(*ifb) else {
+                panic!();
+            };
+            let ifb = Box::new(check_stmt(ast, state, ir, ifb));
+
+            let elseb = elseb.map(|elseb| {
+                let parse::AstData::BlockItem(parse::BlockItem::Stmt(elseb)) = ast.get(elseb) else {
+                    panic!();
+                };
+
+                Box::new(check_stmt(ast, state, ir, elseb))
+            });
+            
+            Stmt::If(exp, ifb, elseb)
+        }
+    }
+}
+
+fn check_decl(ast: &parse::Ast, state: &mut State, ir: &mut IR, decl: &parse::Decl) -> Decl {
+    let exp = decl.value.and_then(|kexp| {
+        let parse::AstData::Exp(exp) = ast.get(kexp) else {
+            panic!();
+        };
+
+        Some(check_exp(ast, state, ir, exp))
+    });
+    let var = state.new_local(decl.name.value).unwrap();
+
+    Decl(var, exp)
+}
+
+fn check_block_item(
+    ast: &parse::Ast,
+    state: &mut State,
+    ir: &mut IR,
+    block_item: &parse::BlockItem,
+) -> BlockItem {
+    match block_item {
+        parse::BlockItem::Decl(decl) => BlockItem::Delc(check_decl(ast, state, ir, decl)),
+        parse::BlockItem::Stmt(stmt) => BlockItem::Stmt(check_stmt(ast, state, ir, stmt)),
     }
 }
 
 fn check_func<'a>(
-    ast: &Ast,
+    ast: &parse::Ast,
     state: &mut State,
     ir: &mut IR<'a>,
     name: &'a str,
-    stmts: &[IndexKey],
+    block_items: &[IndexKey],
 ) {
     state.new_scope(name).unwrap();
-    
-    let body = stmts
+
+    let body = block_items
         .iter()
         .map(|k| {
-            let AstData::Stmt(stmt) = ast.get(*k) else {
+            let parse::AstData::BlockItem(block_item) = ast.get(*k) else {
                 panic!();
             };
-            check_stmt(ast, state, ir, stmt)
+            check_block_item(ast, state, ir, block_item)
         })
         .collect::<Vec<_>>();
 
     ir.push(IRNode::Func(name, body));
 }
 
-pub fn check<'a>(ast: &'a Ast) -> IR<'a> {
+pub fn check<'a>(ast: &'a parse::Ast) -> IR<'a> {
     let mut state: State = Default::default();
     let mut ir: IR = Default::default();
 
     for (data, _) in ast.iter() {
         #[allow(clippy::single_match)]
         match data {
-            AstData::Func { name, statements } => {
-                check_func(ast, &mut state, &mut ir, name.value, statements);
+            parse::AstData::Func { name, block_items } => {
+                check_func(ast, &mut state, &mut ir, name.value, block_items);
             }
             _ => (),
         }
