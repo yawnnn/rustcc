@@ -186,12 +186,12 @@ impl BinOpKind {
 
 #[derive(Debug)]
 pub enum Expression<'a> {
-    BinOp(BinOpKind, AstKey, AstKey),
-    UnOp(UnOpKind, AstKey),
-    Var { name: Token<'a> },
+    BinOp { kind: BinOpKind, op1: AstKey, op2: AstKey },
+    UnOp { kind: UnOpKind, op: AstKey },
+    Var(Token<'a>),
     Assignment { name: Token<'a>, value: AstKey },
     Literal(Token<'a>),
-    Ternary(AstKey, AstKey, AstKey),
+    Ternary { cond: AstKey, ifb: AstKey, elseb: AstKey },
 }
 
 #[derive(Debug)]
@@ -273,19 +273,19 @@ impl<'a> Ast<'a> {
                     }
                 },
             },
-            AstData::Exp(exp) => match exp {
-                Expression::BinOp(_, key1, key2) => {
-                    self.traverse(*key1, depth + 1, keys);
-                    self.traverse(*key2, depth + 1, keys);
+            AstData::Exp(exp) => match *exp {
+                Expression::BinOp { op1, op2, .. } => {
+                    self.traverse(op1, depth + 1, keys);
+                    self.traverse(op2, depth + 1, keys);
                 }
-                Expression::UnOp(_, key) => self.traverse(*key, depth + 1, keys),
-                Expression::Var { .. } => (),
-                Expression::Assignment { value: key, .. } => self.traverse(*key, depth + 1, keys),
+                Expression::UnOp { op, .. } => self.traverse(op, depth + 1, keys),
+                Expression::Var(_) => (),
+                Expression::Assignment { value: key, .. } => self.traverse(key, depth + 1, keys),
                 Expression::Literal(_) => (),
-                Expression::Ternary(cond, trueb, falseb) => {
-                    self.traverse(*cond, depth + 1, keys);
-                    self.traverse(*trueb, depth + 2, keys);
-                    self.traverse(*falseb, depth + 2, keys);
+                Expression::Ternary { cond, ifb, elseb } => {
+                    self.traverse(cond, depth + 1, keys);
+                    self.traverse(ifb, depth + 2, keys);
+                    self.traverse(elseb, depth + 2, keys);
                 }
             },
         }
@@ -380,7 +380,7 @@ fn parse_binop<'a>(
     while let Some(binop_kind) = parse_operator(cursor) {
         let kop2 = parse_operand(ast, cursor).unwrap();
 
-        let binop = AstData::Exp(Expression::BinOp(binop_kind, kbinop, kop2));
+        let binop = AstData::Exp(Expression::BinOp { kind: binop_kind, op1: kbinop, op2: kop2 });
         kbinop = ast.push(binop);
     }
 
@@ -408,14 +408,14 @@ fn parse_factor<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey
             Some(ast.push(literal))
         }
         TokenKind::Ident => {
-            let var = AstData::Exp(Expression::Var { name: token });
+            let var = AstData::Exp(Expression::Var(token));
 
             Some(ast.push(var))
         }
         kind => {
             let unop_kind = UnOpKind::try_from(kind).unwrap();
             let koperand = parse_factor(ast, cursor).unwrap();
-            let unop = AstData::Exp(Expression::UnOp(unop_kind, koperand));
+            let unop = AstData::Exp(Expression::UnOp { kind: unop_kind, op: koperand });
 
             Some(ast.push(unop))
         }
@@ -480,13 +480,14 @@ fn parse_ternary_exp<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<A
         Some(Token { kind: TokenKind::Question, .. }) => {
             cursor.next();
 
-            let ktrueb = parse_exp(ast, cursor).unwrap();
+            let kifb = parse_exp(ast, cursor).unwrap();
 
             match_kind!(cursor.next().unwrap(), TokenKind::Colon).unwrap();
 
-            let kfalseb = parse_ternary_exp(ast, cursor).unwrap();
+            let kelseb = parse_ternary_exp(ast, cursor).unwrap();
 
-            let ternary = AstData::Exp(Expression::Ternary(kexp, ktrueb, kfalseb));
+            let ternary =
+                AstData::Exp(Expression::Ternary { cond: kexp, ifb: kifb, elseb: kelseb });
 
             Some(ast.push(ternary))
         }

@@ -29,7 +29,7 @@ pub enum Exp {
     Var(StackRef),
     Assignment(StackRef, Box<Exp>),
     Literal(Literal),
-    Ternary(Box<Exp>, Box<Exp>, Box<Exp>)
+    Ternary(Box<Exp>, Box<Exp>, Box<Exp>),
 }
 
 pub enum Stmt {
@@ -124,30 +124,30 @@ impl State {
 }
 
 fn check_exp(ast: &parse::Ast, state: &mut State, ir: &mut IR, exp: &parse::Expression) -> Exp {
-    match exp {
-        &parse::Expression::BinOp(kind, kop1, kop2) => {
-            let parse::AstData::Exp(exp1) = ast.get(kop1) else {
+    match *exp {
+        parse::Expression::BinOp { kind, op1, op2 } => {
+            let parse::AstData::Exp(exp1) = ast.get(op1) else {
                 panic!();
             };
-            let parse::AstData::Exp(exp2) = ast.get(kop2) else {
+            let parse::AstData::Exp(exp2) = ast.get(op2) else {
                 panic!();
             };
             let exp1 = check_exp(ast, state, ir, exp1);
             let exp2 = check_exp(ast, state, ir, exp2);
             Exp::BinOp(kind, Box::new(exp1), Box::new(exp2))
         }
-        &parse::Expression::UnOp(kind, kop) => {
-            let parse::AstData::Exp(exp) = ast.get(kop) else {
+        parse::Expression::UnOp { kind, op } => {
+            let parse::AstData::Exp(exp) = ast.get(op) else {
                 panic!();
             };
             let exp = check_exp(ast, state, ir, exp);
             Exp::UnOp(kind, Box::new(exp))
         }
-        &parse::Expression::Var { name } => {
+        parse::Expression::Var(name)=> {
             let var = state.get_local(name.value).unwrap();
             Exp::Var(var)
         }
-        &parse::Expression::Assignment { name, value } => {
+        parse::Expression::Assignment { name, value } => {
             let parse::AstData::Exp(exp) = ast.get(value) else {
                 panic!();
             };
@@ -155,27 +155,27 @@ fn check_exp(ast: &parse::Ast, state: &mut State, ir: &mut IR, exp: &parse::Expr
             let var = state.get_local(name.value).unwrap();
             Exp::Assignment(var, Box::new(exp))
         }
-        &parse::Expression::Literal(literal) => {
+        parse::Expression::Literal(literal) => {
             let value = literal.value.parse::<i32>().unwrap();
             Exp::Literal(Literal::I32(value))
         }
-        &parse::Expression::Ternary(cond, trueb, falseb) => {
+        parse::Expression::Ternary { cond, ifb, elseb } => {
             let parse::AstData::Exp(cond) = ast.get(cond) else {
                 panic!();
             };
             let cond = check_exp(ast, state, ir, cond);
 
-            let parse::AstData::Exp(trueb) = ast.get(trueb) else {
+            let parse::AstData::Exp(ifb) = ast.get(ifb) else {
                 panic!();
             };
-            let trueb = check_exp(ast, state, ir, trueb);
+            let ifb = check_exp(ast, state, ir, ifb);
 
-            let parse::AstData::Exp(falseb) = ast.get(falseb) else {
+            let parse::AstData::Exp(elseb) = ast.get(elseb) else {
                 panic!();
             };
-            let falseb = check_exp(ast, state, ir, falseb);
+            let elseb = check_exp(ast, state, ir, elseb);
 
-            Exp::Ternary(Box::new(cond), Box::new(trueb), Box::new(falseb))
+            Exp::Ternary(Box::new(cond), Box::new(ifb), Box::new(elseb))
         }
     }
 }
@@ -210,13 +210,14 @@ fn check_stmt(ast: &parse::Ast, state: &mut State, ir: &mut IR, stmt: &parse::St
             let ifb = Box::new(check_stmt(ast, state, ir, ifb));
 
             let elseb = elseb.map(|elseb| {
-                let parse::AstData::BlockItem(parse::BlockItem::Stmt(elseb)) = ast.get(elseb) else {
+                let parse::AstData::BlockItem(parse::BlockItem::Stmt(elseb)) = ast.get(elseb)
+                else {
                     panic!();
                 };
 
                 Box::new(check_stmt(ast, state, ir, elseb))
             });
-            
+
             Stmt::If(exp, ifb, elseb)
         }
     }
