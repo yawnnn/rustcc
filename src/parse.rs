@@ -354,7 +354,7 @@ fn parse_binop<'a>(
 fn parse_factor<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
     let token = cursor.next().unwrap();
 
-    //eprintfn!("{token:?}");
+    //printfn!("{token:?}");
 
     match token.kind {
         TokenKind::OpenParen => {
@@ -462,7 +462,7 @@ fn parse_exp<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
     let first = cursor.next().unwrap();
     let second = cursor.next().map(|t| t.kind);
 
-    //eprintfn!("{first:?}, {second:?}");
+    //printfn!("{first:?}, {second:?}");
 
     match (first.kind, second) {
         (TokenKind::Ident, Some(TokenKind::Eq)) => {
@@ -484,7 +484,7 @@ fn parse_exp<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
 ///     | <exp> ";"
 fn parse_statement<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
     let token = cursor.peek();
-    //eprintfn!("{token:?}");
+    //printfn!("{token:?}");
 
     let stmt = match token.unwrap().value {
         "return" => {
@@ -535,7 +535,7 @@ fn parse_statement<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<Ast
 /// <decl> ::= "int" <id> [ = <exp> ] ";"
 fn parse_decl<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<AstKey> {
     let token = cursor.peek();
-    //eprintfn!("{token:?}");
+    //printfn!("{token:?}");
 
     match_value!(token.unwrap(), "int").and_then(|_| {
         cursor.next();

@@ -84,12 +84,12 @@ macro_rules! fnname {
 
 pub(crate) use fnname;
 
-/// eprintln!() with prefix of "`fnname!()`: "
-macro_rules! eprintfn {
+/// println!() with prefix of "`fnname!()`: "
+macro_rules! printfn {
     ($($arg:tt)*) => {{
-        eprint!("{}: ", fnname!());
-        eprintln!($($arg)*);
+        print!("{}: ", fnname!());
+        println!($($arg)*);
     }};
 }
 
-pub(crate) use eprintfn;
+pub(crate) use printfn;
