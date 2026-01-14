@@ -57,7 +57,6 @@ pub enum TokenKind {
 pub struct Token<'a> {
     pub kind: TokenKind,
     pub value: &'a str,
-    pub _pos: usize,
 }
 
 impl Debug for Token<'_> {
@@ -101,7 +100,6 @@ impl<'a> Lexer<'a> {
         Token {
             kind,
             value: &self.src[self.token_beg..self.pos],
-            _pos: self.token_beg,
         }
     }
 
@@ -142,7 +140,10 @@ impl<'a> Lexer<'a> {
         self.beg_token();
 
         let Some(c) = self.bump() else {
-            return self.end_token(K::Eof);
+            return Token {
+                kind: TokenKind::Eof,
+                value: "",
+            };
         };
 
         let kind = match c {
@@ -237,7 +238,6 @@ impl<'a> Lexer<'a> {
             }
             c if c.is_whitespace() => {
                 self.bump_while(char::is_whitespace);
-                self.beg_token();
                 return self.next();
             }
             _ => panic!("Unhandled token"),

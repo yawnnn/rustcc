@@ -53,15 +53,15 @@ pub fn compile<P: AsRef<Path>>(
 ) -> Option<()> {
     let src = fs::read_to_string(&src_name).unwrap();
     let tokens = lex(&src);
-    let ast = parse(&tokens)?;
+    let ast = parse(tokens);
 
     if dump_ast {
         println!("{:#?}", ast);
         return Some(());
     }
 
-    let ir = check(&ast);
-    let asm = codegen(ir)?;
+    let ctx = check(&ast);
+    let asm = codegen(&ctx, &ast)?;
 
     if dump_asm {
         println!("{}", asm);
@@ -72,3 +72,15 @@ pub fn compile<P: AsRef<Path>>(
     write_asm(&exe_name, &asm)?;
     link(&exe_name)
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[test]
+//     fn test_x() {
+//         let path = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+//         let path = std::path::PathBuf::from(path).join("input");
+//         compile(None, &path, true, false);
+//     }
+// }

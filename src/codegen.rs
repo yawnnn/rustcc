@@ -2,8 +2,8 @@
 
 use std::{cell::Cell, ops};
 
-use crate::check::*;
-use crate::parse::{BinOpKind, UnOpKind};
+use crate::check::Ctx;
+use crate::parse::*;
 
 // what about something like Cow?
 struct Assembly(Vec<String>);
@@ -80,7 +80,7 @@ fn gen_unique_label() -> String {
 /// - `BinOpKind::Mul`
 /// - `BinOpKind::Div`
 /// - `BinOpKind::Mod`
-fn gen_exp_binop_aritmethic(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
+fn gen_exp_binop_aritmethic(ctx: &Ctx, kind: &BinOpKind, op1: &Expr, op2: &Expr) -> Assembly {
     let mut output = Assembly::new();
 
     #[rustfmt::skip]
@@ -93,9 +93,9 @@ fn gen_exp_binop_aritmethic(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly 
         _ => unreachable!(),
     };
 
-    output += gen_exp(op1);
+    output += gen_exp(ctx, op1);
     output += "push %rax";
-    output += gen_exp(op2);
+    output += gen_exp(ctx, op2);
 
     if div {
         output += "cqo";
@@ -116,7 +116,7 @@ fn gen_exp_binop_aritmethic(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly 
 /// generate assembly for
 /// - `BinOpKind::LShift`
 /// - `BinOpKind::RShift`
-fn gen_exp_binop_bitshift(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
+fn gen_exp_binop_bitshift(ctx: &Ctx, kind: &BinOpKind, op1: &Expr, op2: &Expr) -> Assembly {
     let mut output = Assembly::new();
 
     let instr = match kind {
@@ -125,9 +125,9 @@ fn gen_exp_binop_bitshift(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
         _ => unreachable!(),
     };
 
-    output += gen_exp(op2);
+    output += gen_exp(ctx, op2);
     output += "push %rax";
-    output += gen_exp(op1);
+    output += gen_exp(ctx, op1);
     output += "pop %rcx";
     output += format!("{instr} %cl, %rax");
 
@@ -141,7 +141,7 @@ fn gen_exp_binop_bitshift(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
 /// - `BinOpKind::Leq`
 /// - `BinOpKind::Gt`
 /// - `BinOpKind::Geq`
-fn gen_exp_binop_relational(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
+fn gen_exp_binop_relational(ctx: &Ctx, kind: &BinOpKind, op1: &Expr, op2: &Expr) -> Assembly {
     let mut output = Assembly::new();
 
     let set_instr = match kind {
@@ -154,9 +154,9 @@ fn gen_exp_binop_relational(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly 
         _ => unreachable!(),
     };
 
-    output += gen_exp(op1);
+    output += gen_exp(ctx, op1);
     output += "push %rax";
-    output += gen_exp(op2);
+    output += gen_exp(ctx, op2);
     output += "pop %rcx";
     output += "cmp %rax, %rcx";
     output += "mov $0, %rax";
@@ -169,7 +169,7 @@ fn gen_exp_binop_relational(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly 
 /// - `BinOpKind::BitOr`
 /// - `BinOpKind::BitXor`
 /// - `BinOpKind::BitAnd`
-fn gen_exp_binop_bitwise(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
+fn gen_exp_binop_bitwise(ctx: &Ctx, kind: &BinOpKind, op1: &Expr, op2: &Expr) -> Assembly {
     let mut output = Assembly::new();
 
     let instr = match kind {
@@ -179,9 +179,9 @@ fn gen_exp_binop_bitwise(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
         _ => unreachable!(),
     };
 
-    output += gen_exp(op1);
+    output += gen_exp(ctx, op1);
     output += "push %rax";
-    output += gen_exp(op2);
+    output += gen_exp(ctx, op2);
     output += "pop %rcx";
     output += format!("{instr} %rcx, %rax");
 
@@ -191,7 +191,7 @@ fn gen_exp_binop_bitwise(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
 /// generate assembly for
 /// - `BinOpKind::LogAnd`
 /// - `BinOpKind::LogOr`
-fn gen_exp_binop_logical(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
+fn gen_exp_binop_logical(ctx: &Ctx, kind: &BinOpKind, op1: &Expr, op2: &Expr) -> Assembly {
     let mut output = Assembly::new();
     let op2_label = gen_unique_label();
     let end_label = gen_unique_label();
@@ -207,14 +207,14 @@ fn gen_exp_binop_logical(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
     };
 
     // op1
-    output += gen_exp(op1);
+    output += gen_exp(ctx, op1);
     output += "cmp $0, %rax";
     output += different_part;
     output += format!("jmp {end_label}");
 
     // op2
     output += format!("{op2_label}:");
-    output += gen_exp(op2);
+    output += gen_exp(ctx, op2);
     output += "cmp $0, %rax";
     output += "mov $0, %rax";
     output += "setne %al";
@@ -223,34 +223,34 @@ fn gen_exp_binop_logical(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
     output
 }
 
-fn gen_exp(exp: &Exp) -> Assembly {
+fn gen_exp(ctx: &Ctx, expr: &Expr) -> Assembly {
     let mut output = Assembly::new();
 
-    match exp {
-        Exp::Literal(Literal::I32(integer)) => output += format!("mov ${integer}, %rax"),
-        Exp::UnOp(kind, op) => match kind {
+    match expr {
+        Expr::Const(tok) => output += format!("mov ${}, %rax", tok.value.parse::<i32>().unwrap()),
+        Expr::UnOp(_, kind, op) => match kind {
             UnOpKind::Negative => {
-                output += gen_exp(op);
+                output += gen_exp(ctx, op);
                 output += "neg %rax";
             }
             UnOpKind::BitNot => {
-                output += gen_exp(op);
+                output += gen_exp(ctx, op);
                 output += "not %rax";
             }
             UnOpKind::LogNot => {
-                output += gen_exp(op);
+                output += gen_exp(ctx, op);
                 output += "cmp $0, %rax";
                 output += "mov $0, %rax";
                 output += "sete %al";
             }
             _ => todo!(),
         },
-        Exp::BinOp(kind, op1, op2) => match kind {
+        Expr::BinOp(_, kind, op1, op2) => match kind {
             BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul | BinOpKind::Div | BinOpKind::Mod => {
-                output += gen_exp_binop_aritmethic(kind, op1, op2);
+                output += gen_exp_binop_aritmethic(ctx, kind, op1, op2);
             }
             BinOpKind::LShift | BinOpKind::RShift => {
-                output += gen_exp_binop_bitshift(kind, op1, op2);
+                output += gen_exp_binop_bitshift(ctx, kind, op1, op2);
             }
             BinOpKind::Eq
             | BinOpKind::Neq
@@ -258,24 +258,29 @@ fn gen_exp(exp: &Exp) -> Assembly {
             | BinOpKind::Leq
             | BinOpKind::Gt
             | BinOpKind::Geq => {
-                output += gen_exp_binop_relational(kind, op1, op2);
+                output += gen_exp_binop_relational(ctx, kind, op1, op2);
             }
             BinOpKind::BitOr | BinOpKind::BitXor | BinOpKind::BitAnd => {
-                output += gen_exp_binop_bitwise(kind, op1, op2);
+                output += gen_exp_binop_bitwise(ctx, kind, op1, op2);
             }
             BinOpKind::LogAnd | BinOpKind::LogOr => {
-                output += gen_exp_binop_logical(kind, op1, op2);
+                output += gen_exp_binop_logical(ctx, kind, op1, op2);
             }
             _ => todo!(),
         },
-        Exp::Assignment(var, value) => {
-            output += gen_exp(value);
+        Expr::Assign(tok, _, var, value) => {
+            output += gen_exp(ctx, value);
+            let Expr::Var(var) = var.as_ref() else {
+                panic!("Expected variable")
+            };
+            let var = ctx.get_var(var.value).unwrap();
             output += format!("mov %rax, -{}(%rbp)", var.offset());
         }
-        Exp::Var(var) => {
+        Expr::Var(var) => {
+            let var = ctx.get_var(var.value).unwrap();
             output += format!("mov -{}(%rbp), %rax", var.offset());
         }
-        Exp::TerOp(cond, trueb, falseb) => {
+        Expr::TerOp(_, _, cond, trueb, falseb) => {
             todo!()
         }
     }
@@ -283,18 +288,18 @@ fn gen_exp(exp: &Exp) -> Assembly {
     output
 }
 
-fn gen_stmt(stmt: &Stmt, ret_lable: &str) -> Assembly {
+fn gen_stmt(ctx: &Ctx, stmt: &Stmt, ret_lable: &str) -> Assembly {
     let mut output = Assembly::new();
 
     match stmt {
-        Stmt::Return(exp) => {
-            output += gen_exp(exp);
+        Stmt::Ret(expr) => {
+            output += gen_exp(ctx, expr);
             output += format!("jmp {ret_lable}");
         }
-        Stmt::Exp(exp) => {
-            output += gen_exp(exp);
+        Stmt::Expr(expr) => {
+            output += gen_exp(ctx, expr);
         }
-        Stmt::If(exp, ifb, elseb) => {
+        Stmt::If{cond, true_b, false_b} => {
             todo!()
         }
     }
@@ -302,12 +307,12 @@ fn gen_stmt(stmt: &Stmt, ret_lable: &str) -> Assembly {
     output
 }
 
-fn gen_decl(decl: &Decl) -> Assembly {
+fn gen_decl(ctx: &Ctx, decl: &Decl) -> Assembly {
     let mut output = Assembly::new();
 
-    match &decl.1 {
-        Some(exp) => {
-            output += gen_exp(exp);
+    match &decl.value {
+        Some(expr) => {
+            output += gen_exp(ctx, expr);
             output += "push %rax";
         }
         _ => {
@@ -318,48 +323,45 @@ fn gen_decl(decl: &Decl) -> Assembly {
     output
 }
 
-fn gen_block_item(block_item: &BlockItem, ret_lable: &str) -> Assembly {
+fn gen_block_item(ctx: &Ctx, block_item: &BlockItem, ret_lable: &str) -> Assembly {
     match block_item {
-        BlockItem::Delc(decl) => gen_decl(decl),
-        BlockItem::Stmt(stmt) => gen_stmt(stmt, ret_lable),
+        BlockItem::Decl(decl) => gen_decl(ctx, decl),
+        BlockItem::Stmt(stmt) => gen_stmt(ctx, stmt, ret_lable),
     }
 }
 
-fn generate_assembly(ir: IR) -> Assembly {
+fn gen_fn_defs(ctx: &Ctx, ast: &Ast) -> Assembly {
     let mut output = Assembly::new();
 
-    for node in ir.into_iter() {
-        match node {
-            IRNode::Func(name, block_items) => {
-                output += format!(".globl {name}");
-                output += format!("{name}:");
-                output += "push %rbp";
-                output += "mov %rsp, %rbp";
+    for defs in &ast.defs {
+        let FnDef { name, body } = defs;
+        output += format!(".globl {}", name.value);
+        output += format!("{}:", name.value);
+        output += "push %rbp";
+        output += "mov %rsp, %rbp";
 
-                let ret_label = gen_unique_label();
+        let ret_label = gen_unique_label();
 
-                block_items
-                    .iter()
-                    .for_each(|block_item| output += gen_block_item(block_item, &ret_label));
+        body
+            .iter()
+            .for_each(|block_item| output += gen_block_item(ctx, block_item, &ret_label));
 
-                if !matches!(block_items.last(), Some(BlockItem::Stmt(Stmt::Return(_)))) {
-                    output += "mov $0, %rax";
-                }
-
-                output += format!("{ret_label}:");
-                output += "mov %rbp, %rsp";
-                output += "pop %rbp";
-                output += "ret";
-            }
+        if !matches!(body.last(), Some(BlockItem::Stmt(Stmt::Ret(_)))) {
+            output += "mov $0, %rax";
         }
+
+        output += format!("{ret_label}:");
+        output += "mov %rbp, %rsp";
+        output += "pop %rbp";
+        output += "ret";
     }
 
     output
 }
 
 /// TODO: extract the 64bit vs 32bit logic/operators out
-pub fn codegen(ir: IR) -> Option<String> {
-    let asm = generate_assembly(ir);
+pub fn codegen(ctx: &Ctx, ast: &Ast) -> Option<String> {
+    let asm = gen_fn_defs(ctx, ast);
     let asm = asm.assemble();
 
     #[cfg(debug_assertions)]
