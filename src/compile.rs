@@ -1,7 +1,7 @@
-use crate::lex::lex;
-use crate::parse::parse;
 use crate::check::check;
 use crate::codegen::codegen;
+use crate::lex::lex;
+use crate::parse::parse;
 
 use std::{
     fs::{self, File},
@@ -45,7 +45,12 @@ fn link<P: AsRef<Path>>(exe_name: P) -> Option<()> {
     Some(())
 }
 
-pub fn compile<P: AsRef<Path>>(exe_name: Option<P>, src_name: P, dump_ast: bool, dump_asm: bool) -> Option<()> {
+pub fn compile<P: AsRef<Path>>(
+    exe_name: Option<P>,
+    src_name: P,
+    dump_ast: bool,
+    dump_asm: bool,
+) -> Option<()> {
     let src = fs::read_to_string(&src_name).unwrap();
     let tokens = lex(&src);
     let ast = parse(&tokens)?;
@@ -60,7 +65,7 @@ pub fn compile<P: AsRef<Path>>(exe_name: Option<P>, src_name: P, dump_ast: bool,
 
     if dump_asm {
         println!("{}", asm);
-        return Some(())
+        return Some(());
     }
 
     let exe_name = exe_name.unwrap();

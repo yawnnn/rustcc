@@ -62,7 +62,10 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     fn new(input: &'a str) -> Lexer<'a> {
-        Lexer { chars: input.chars(), pos: (0, 0) }
+        Lexer {
+            chars: input.chars(),
+            pos: (0, 0),
+        }
     }
 
     fn next_char(&mut self) -> Option<char> {
@@ -195,7 +198,7 @@ impl<'a> Lexer<'a> {
 }
 
 /// TODO: can't i ignore spaces here
-pub fn lex(src: &str) -> Vec<Token> {
+pub fn lex(src: &str) -> Vec<Token<'_>> {
     let tokens = Lexer::new(src).into_iter().collect::<Vec<_>>();
 
     //#[cfg(debug_assertions)]
