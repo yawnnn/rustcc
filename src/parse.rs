@@ -17,7 +17,7 @@ impl UnOpKind {
         match kind {
             TokenKind::Minus => Some(Self::ArithNeg),
             TokenKind::Tilde => Some(Self::BitWsNot),
-            TokenKind::Not => Some(Self::LogicNot),
+            TokenKind::Bang => Some(Self::LogicNot),
             _ => None,
         }
     }
@@ -57,14 +57,14 @@ pub enum BinOpKind {
 impl BinOpKind {
     fn logical_or_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::OrOr => Some(Self::LogicOr),
+            TokenKind::PipePipe => Some(Self::LogicOr),
             _ => None,
         })
     }
 
     fn logical_and_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::AndAnd => Some(Self::LogicAnd),
+            TokenKind::AmpAmp => Some(Self::LogicAnd),
             _ => None,
         })
     }
@@ -72,7 +72,7 @@ impl BinOpKind {
     fn equality_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
             TokenKind::EqEq => Some(Self::RelatEq),
-            TokenKind::Neq => Some(Self::RelatNotEq),
+            TokenKind::BangEq => Some(Self::RelatNotEq),
             _ => None,
         })
     }
@@ -106,14 +106,14 @@ impl BinOpKind {
 
     fn bitwise_and_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::And => Some(Self::BitWsAnd),
+            TokenKind::Amp => Some(Self::BitWsAnd),
             _ => None,
         })
     }
 
     fn bitwise_or_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::Or => Some(Self::BitWsOr),
+            TokenKind::Pipe => Some(Self::BitWsOr),
             _ => None,
         })
     }
@@ -308,15 +308,7 @@ impl<'a> Cursor<'a> {
     }
 
     fn next(&mut self) -> Option<Token<'a>> {
-        loop {
-            match self.0.next() {
-                Some(Token {
-                    kind: TokenKind::Whitespace,
-                    ..
-                }) => (),
-                token_or_none => break token_or_none.copied(),
-            }
-        }
+        self.0.next().copied()
     }
 
     fn peek(&self) -> Option<Token<'a>> {

@@ -2,50 +2,62 @@ use std::{fmt::Debug, str::Chars};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
-    Whitespace,
+    Eof,
+
     Ident,
     Literal,
-    OpenBrace,  // {
-    CloseBrace, // }
-    OpenParen,  // (
-    CloseParen, // )
-    Semicolon,  // ;
-    Colon,      // :
-    Minus,      // -
-    Tilde,      // ~
-    Not,        // !
-    Neq,        // !=
-    Plus,       // +
-    Star,       // *
-    Slash,      // /
-    And,        // &
-    AndAnd,     // &&
-    Or,         // |
-    OrOr,       // ||
-    Eq,         // =
-    EqEq,       // ==
-    Lt,         // <
-    LtLt,       // <<
-    Leq,        // <=
-    Gt,         // >
-    GtGt,       // >>
-    Geq,        // >=
-    Percent,    // %
-    Caret,      // ^
-    Question,   // ?
+    OpenBrace,    // {
+    CloseBrace,   // }
+    OpenParen,    // (
+    CloseParen,   // )
+    OpenBracket,  // [
+    CloseBracket, // ]
+    Dot,          // .
+    Comma,        // ,
+    Semicolon,    // ;
+    Colon,        // :
+    Minus,        // -
+    MinusMinus,   // --
+    MinusEq,      // -=
+    Arrow,        // ->
+    Tilde,        // ~
+    Bang,         // !
+    BangEq,       // !=
+    Plus,         // +
+    PlusPlus,     // ++
+    PlusEq,       // +=
+    Star,         // *
+    StarEq,       // *=
+    Slash,        // /
+    SlashEq,      // /=
+    Amp,          // &
+    AmpAmp,       // &&
+    AmpEq,        // &=
+    Pipe,         // |
+    PipePipe,     // ||
+    PipeEq,       // |=
+    Eq,           // =
+    EqEq,         // ==
+    Lt,           // <
+    LtLt,         // <<
+    LtLtEq,       // <<=
+    Leq,          // <=
+    Gt,           // >
+    GtGt,         // >>
+    GtGtEq,       // >>=
+    Geq,          // >=
+    Percent,      // %
+    PercentEq,    // %=
+    Caret,        // ^
+    CaretEq,      // ^=
+    Question,     // ?
 }
 
 #[derive(Clone, Copy)]
 pub struct Token<'a> {
     pub kind: TokenKind,
     pub value: &'a str,
-    pub _pos: (usize, usize),
-}
-
-impl<'a> Token<'a> {
-    fn new(kind: TokenKind, value: &'a str, _pos: (usize, usize)) -> Self {
-        Token { kind, value, _pos }
-    }
+    pub _pos: usize,
 }
 
 impl Debug for Token<'_> {
@@ -56,55 +68,63 @@ impl Debug for Token<'_> {
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
+    src: &'a str,
     chars: Chars<'a>,
-    pos: (usize, usize),
+    pos: usize,
+    token_beg: usize,
 }
 
 impl<'a> Lexer<'a> {
-    fn new(input: &'a str) -> Lexer<'a> {
+    fn new(src: &'a str) -> Lexer<'a> {
         Lexer {
-            chars: input.chars(),
-            pos: (0, 0),
+            src,
+            chars: src.chars(),
+            pos: 0,
+            token_beg: 0,
         }
     }
 
-    fn next_char(&mut self) -> Option<char> {
-        let next = self.chars.next();
-        match next {
-            Some('\n') => {
-                self.pos.0 += 1;
-                self.pos.1 = 0;
-            }
-            _ => self.pos.1 += 1,
-        }
-        next
+    fn bump(&mut self) -> Option<char> {
+        self.pos += 1;
+        self.chars.next()
     }
 
-    fn peek_char(&self) -> Option<char> {
+    fn peek(&self) -> Option<char> {
         self.chars.clone().next()
     }
 
-    fn advance_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
-        while let Some(c) = self.peek_char() {
-            match predicate(c) {
-                true => self.next_char(),
-                false => break,
-            };
+    fn beg_token(&mut self) {
+        self.token_beg = self.pos;
+    }
+
+    fn end_token(&mut self, kind: TokenKind) -> Token<'a> {
+        Token {
+            kind,
+            value: &self.src[self.token_beg..self.pos],
+            _pos: self.token_beg,
         }
     }
 
     /// peek, run `predicate` and advance if Ok()
     /// returns inner result of `predicate` both if Ok() or Err()
-    fn advance_if_ok(
+    fn bump_if_ok(
         &mut self,
-        mut predicate: impl FnMut(char) -> Result<TokenKind, TokenKind>,
+        mut predicate: impl FnMut(&mut Self, char) -> Result<TokenKind, TokenKind>,
     ) -> TokenKind {
-        match predicate(self.peek_char().unwrap_or('\0')) {
-            Ok(inner) => {
-                self.next_char();
-                inner
+        match predicate(self, self.peek().unwrap_or('\0')) {
+            Ok(kind) => {
+                self.bump();
+                kind
             }
-            Err(inner) => inner,
+            Err(kind) => kind,
+        }
+    }
+
+    fn bump_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
+        while let Some(c) = self.peek()
+            && predicate(c)
+        {
+            self.bump();
         }
     }
 
@@ -116,84 +136,124 @@ impl<'a> Lexer<'a> {
         c == '_' || c.is_alphanumeric()
     }
 
-    pub fn next_token(&mut self) -> Option<Token<'a>> {
-        use TokenKind::*;
+    pub fn next(&mut self) -> Token<'a> {
+        use TokenKind as K;
 
-        let start = self.chars.as_str();
+        self.beg_token();
 
-        let kind = match self.next_char()? {
-            '{' => OpenBrace,
-            '}' => CloseBrace,
-            '(' => OpenParen,
-            ')' => CloseParen,
-            ';' => Semicolon,
-            ':' => Colon,
-            '~' => Tilde,
-            '!' => self.advance_if_ok(|c| match c {
-                '=' => Ok(Neq),
-                _ => Err(Not),
+        let Some(c) = self.bump() else {
+            return self.end_token(K::Eof);
+        };
+
+        let kind = match c {
+            '{' => K::OpenBrace,
+            '}' => K::CloseBrace,
+            '(' => K::OpenParen,
+            ')' => K::CloseParen,
+            '[' => K::OpenBracket,
+            ']' => K::CloseBracket,
+            '.' => K::Dot,
+            ',' => K::Comma,
+            ';' => K::Semicolon,
+            ':' => K::Colon,
+            '~' => K::Tilde,
+            '!' => self.bump_if_ok(|_, c| match c {
+                '=' => Ok(K::BangEq),
+                _ => Err(K::Bang),
             }),
-            '-' => Minus,
-            '+' => Plus,
-            '*' => Star,
-            '/' => Slash,
-            '&' => self.advance_if_ok(|c| match c {
-                '&' => Ok(AndAnd),
-                _ => Err(And),
+            '-' => self.bump_if_ok(|_, c| match c {
+                '-' => Ok(K::MinusMinus),
+                '=' => Ok(K::MinusEq),
+                '>' => Ok(K::Arrow),
+                _ => Err(K::Minus),
             }),
-            '|' => self.advance_if_ok(|c| match c {
-                '|' => Ok(OrOr),
-                _ => Err(Or),
+            '+' => self.bump_if_ok(|_, c| match c {
+                '+' => Ok(K::PlusPlus),
+                '=' => Ok(K::PlusEq),
+                _ => Err(K::Plus),
             }),
-            '=' => self.advance_if_ok(|c| match c {
-                '=' => Ok(EqEq),
-                _ => Err(Eq),
+            '*' => self.bump_if_ok(|_, c| match c {
+                '=' => Ok(K::StarEq),
+                _ => Err(K::Star),
             }),
-            '<' => self.advance_if_ok(|c| match c {
-                '<' => Ok(LtLt),
-                '=' => Ok(Leq),
-                _ => Err(Lt),
+            '/' => self.bump_if_ok(|_, c| match c {
+                '=' => Ok(K::SlashEq),
+                _ => Err(K::Slash),
             }),
-            '>' => self.advance_if_ok(|c| match c {
-                '>' => Ok(GtGt),
-                '=' => Ok(Geq),
-                _ => Err(Gt),
+            '&' => self.bump_if_ok(|_, c| match c {
+                '&' => Ok(K::AmpAmp),
+                '=' => Ok(K::AmpEq),
+                _ => Err(K::Amp),
             }),
-            '%' => Percent,
-            '^' => Caret,
-            '?' => Question,
+            '|' => self.bump_if_ok(|_, c| match c {
+                '|' => Ok(K::PipePipe),
+                '=' => Ok(K::PipeEq),
+                _ => Err(K::Pipe),
+            }),
+            '=' => self.bump_if_ok(|_, c| match c {
+                '=' => Ok(K::EqEq),
+                _ => Err(K::Eq),
+            }),
+            '<' => self.bump_if_ok(|self_, c| match c {
+                '<' => {
+                    let k = self_.bump_if_ok(|_, c| match c {
+                        '=' => Ok(K::LtLtEq),
+                        _ => Err(K::LtLt),
+                    });
+
+                    Ok(k)
+                }
+                '=' => Ok(K::Leq),
+                _ => Err(K::Lt),
+            }),
+            '>' => self.bump_if_ok(|self_, c| match c {
+                '>' => {
+                    let k = self_.bump_if_ok(|_, c| match c {
+                        '=' => Ok(K::GtGtEq),
+                        _ => Err(K::GtGt),
+                    });
+
+                    Ok(k)
+                }
+                '=' => Ok(K::Geq),
+                _ => Err(K::Gt),
+            }),
+            '%' => self.bump_if_ok(|_, c| match c {
+                '=' => Ok(K::PercentEq),
+                _ => Err(K::Percent),
+            }),
+            '^' => self.bump_if_ok(|_, c| match c {
+                '=' => Ok(K::CaretEq),
+                _ => Err(K::Caret),
+            }),
+            '?' => K::Question,
             c if c.is_numeric() => {
-                self.advance_while(char::is_numeric);
-                Literal
+                self.bump_while(char::is_numeric);
+                K::Literal
             }
             c if Self::is_ident_start(c) => {
-                self.advance_while(Self::is_ident);
-                Ident
+                self.bump_while(Self::is_ident);
+                K::Ident
             }
             c if c.is_whitespace() => {
-                self.advance_while(char::is_whitespace);
-                Whitespace
+                self.bump_while(char::is_whitespace);
+                self.beg_token();
+                return self.next();
             }
             _ => panic!("Unhandled token"),
         };
 
-        let end = self.chars.as_str();
-        let len = start.len() - end.len();
-        let str = &start[..len];
-
-        Some(Token::new(kind, str, self.pos))
+        self.end_token(kind)
     }
 
-    // pub fn peek_token(&self) -> Option<(Token, &str)> {
-    //     let start = self.chars.as_str();
-    //     let (token, _) = self.clone().next()?;
-    //     let len = token.len;
-
-    //     Some((token, &start[..len]))
-    // }
-
-    pub fn into_iter(mut self) -> impl Iterator<Item = Token<'a>> + 'a {
-        std::iter::from_fn(move || self.next_token())
+    pub fn into_iter(mut self) -> impl Iterator<Item = Token<'a>> {
+        std::iter::from_fn(move || match self.next() {
+            Token {
+                kind: TokenKind::Eof,
+                ..
+            } => None,
+            t => Some(t),
+        })
     }
 }
 
@@ -204,5 +264,6 @@ pub fn lex(src: &str) -> Vec<Token<'_>> {
     //#[cfg(debug_assertions)]
     //println!("\n# TOKENS\n```rust\n{tokens:#?}\n```\n");
 
+    #[allow(clippy::let_and_return)]
     tokens
 }
