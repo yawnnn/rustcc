@@ -7,17 +7,28 @@ use crate::lex::{Token, TokenKind};
 
 #[derive(Debug, Clone, Copy)]
 pub enum UnOpKind {
-    ArithNeg,
-    BitWsNot,
-    LogicNot,
+    // 15
+    SufIncr, // x++
+    SufDecr, // x--
+    Call,    // x()
+    // 14
+    PreIncr, // ++x
+    PreDecr, // --x
+    Positive,    // +x
+    Negative,   // -x
+    LogNot,     // !x
+    BitNot,  // ~x
+    Cast,    // (type)x
+    Deref,   // *x
+    Addr,    // &x
 }
 
 impl UnOpKind {
     fn try_from(kind: TokenKind) -> Option<Self> {
         match kind {
-            TokenKind::Minus => Some(Self::ArithNeg),
-            TokenKind::Tilde => Some(Self::BitWsNot),
-            TokenKind::Bang => Some(Self::LogicNot),
+            TokenKind::Minus => Some(Self::Negative),
+            TokenKind::Tilde => Some(Self::BitNot),
+            TokenKind::Bang => Some(Self::LogNot),
             _ => None,
         }
     }
@@ -25,125 +36,156 @@ impl UnOpKind {
 
 #[derive(Debug, Clone, Copy)]
 pub enum BinOpKind {
-    // arithmetic
-    ArithAdd,
-    ArithSub,
-    ArithMul,
-    ArithDiv,
-    ArithMod,
-
-    // bitshift
-    BitShLeft,
-    BitShRight,
-
-    // relational
-    RelatLt,
-    RelatLeq,
-    RelatGt,
-    RelatGeq,
-    RelatEq,
-    RelatNotEq,
-
-    // bitwise
-    BitWsAnd,
-    BitWsOr,
-    BitWsXor,
-
-    // logical
-    LogicAnd,
-    LogicOr,
+    // 15
+    Index,       // x[]
+    MemberAcc,   // x.y
+    MemberDeref, // x->y
+    // 13
+    Mul, // x * y
+    Div, // x / y
+    Mod, // x % y
+    // 12
+    Add, // x + y
+    Sub, // x - y
+    // 11
+    LShift, // x << y
+    RShift, // x >> y
+    // 10
+    Lt,  // x < y
+    Leq, // x <= y
+    Gt,  // x > y
+    Geq, // x >= y
+    // 9
+    Eq, // x == y
+    Neq,  // x != y
+    // 8
+    BitAnd, // x & y
+    // 7
+    BitXor, // x ^ y
+    // 6
+    BitOr, // x | y
+    // 5
+    LogAnd, // x && y
+    // 4
+    LogOr, // x || y
+    // 2
+    Assign,       // x = y
+    AddAssign,    // x += y
+    SubAssign,    // x -= y
+    MulAssign,    // x *= y
+    DivAssign,    // x /= y
+    ModAssign,    // x %= y
+    LShiftAssign, // x <<= y
+    RShiftAssign, // x >>= y
+    BitAndAssign, // x &= y
+    BitXorAssign, // x ^= y
+    BitOrAssign,  // x |= y
+    // 1
+    Comma, // x, y
 }
 
 impl BinOpKind {
     fn logical_or_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::PipePipe => Some(Self::LogicOr),
+            TokenKind::PipePipe => Some(Self::LogOr),
             _ => None,
         })
     }
 
     fn logical_and_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::AmpAmp => Some(Self::LogicAnd),
+            TokenKind::AmpAmp => Some(Self::LogAnd),
             _ => None,
         })
     }
 
     fn equality_try_from(cursor: &mut Cursor) -> Option<Self> {
-        cursor.advance_if_some(|k| match k {
-            TokenKind::EqEq => Some(Self::RelatEq),
-            TokenKind::BangEq => Some(Self::RelatNotEq),
+        cursor.advance_if_some(|k: TokenKind| match k {
+            TokenKind::EqEq => Some(Self::Eq),
+            TokenKind::BangEq => Some(Self::Neq),
             _ => None,
         })
     }
 
     fn relational_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::Gt => Some(Self::RelatGt),
-            TokenKind::Geq => Some(Self::RelatGeq),
-            TokenKind::Lt => Some(Self::RelatLt),
-            TokenKind::Leq => Some(Self::RelatLeq),
+            TokenKind::Gt => Some(Self::Gt),
+            TokenKind::Geq => Some(Self::Geq),
+            TokenKind::Lt => Some(Self::Lt),
+            TokenKind::Leq => Some(Self::Leq),
             _ => None,
         })
     }
 
     fn additive_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::Plus => Some(Self::ArithAdd),
-            TokenKind::Minus => Some(Self::ArithSub),
+            TokenKind::Plus => Some(Self::Add),
+            TokenKind::Minus => Some(Self::Sub),
             _ => None,
         })
     }
 
     fn multiplicative_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::Star => Some(Self::ArithMul),
-            TokenKind::Slash => Some(Self::ArithDiv),
-            TokenKind::Percent => Some(Self::ArithMod),
+            TokenKind::Star => Some(Self::Mul),
+            TokenKind::Slash => Some(Self::Div),
+            TokenKind::Percent => Some(Self::Mod),
             _ => None,
         })
     }
 
     fn bitwise_and_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::Amp => Some(Self::BitWsAnd),
+            TokenKind::Amp => Some(Self::BitAnd),
             _ => None,
         })
     }
 
     fn bitwise_or_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::Pipe => Some(Self::BitWsOr),
+            TokenKind::Pipe => Some(Self::BitOr),
             _ => None,
         })
     }
 
     fn bitwise_xor_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::Caret => Some(Self::BitWsXor),
+            TokenKind::Caret => Some(Self::BitXor),
             _ => None,
         })
     }
 
     fn bitshift_try_from(cursor: &mut Cursor) -> Option<Self> {
         cursor.advance_if_some(|k| match k {
-            TokenKind::LtLt => Some(Self::BitShLeft),
-            TokenKind::GtGt => Some(Self::BitShRight),
+            TokenKind::LtLt => Some(Self::LShift),
+            TokenKind::GtGt => Some(Self::RShift),
             _ => None,
         })
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum TerOpKind {
+    // 3
+    Cond, // x ? y : z
+}
+
 #[derive(Debug)]
 pub enum Expression<'a> {
+    UnOp {
+        kind: UnOpKind,
+        op: AstKey,
+    },
     BinOp {
         kind: BinOpKind,
         op1: AstKey,
         op2: AstKey,
     },
-    UnOp {
-        kind: UnOpKind,
-        op: AstKey,
+    TerOp {
+        kind: TerOpKind,
+        cond: AstKey,
+        ifb: AstKey,
+        elseb: AstKey,
     },
     Var(Token<'a>),
     Assignment {
@@ -151,11 +193,6 @@ pub enum Expression<'a> {
         value: AstKey,
     },
     Literal(Token<'a>),
-    Ternary {
-        cond: AstKey,
-        ifb: AstKey,
-        elseb: AstKey,
-    },
 }
 
 #[derive(Debug)]
@@ -256,7 +293,7 @@ impl<'a> Ast<'a> {
                 Expression::Var(_) => (),
                 Expression::Assignment { value: key, .. } => self.traverse(key, depth + 1, keys),
                 Expression::Literal(_) => (),
-                Expression::Ternary { cond, ifb, elseb } => {
+                Expression::TerOp { kind: _, cond, ifb, elseb } => {
                     self.traverse(cond, depth + 1, keys);
                     self.traverse(ifb, depth + 2, keys);
                     self.traverse(elseb, depth + 2, keys);
@@ -531,7 +568,8 @@ fn parse_ternary_exp<'a>(ast: &mut Ast<'a>, cursor: &mut Cursor<'a>) -> Option<A
             match_kind!(cursor.next().unwrap(), TokenKind::Colon).unwrap();
 
             let kelseb = parse_ternary_exp(ast, cursor).unwrap();
-            let ternary = AstData::Exp(Expression::Ternary {
+            let ternary = AstData::Exp(Expression::TerOp {
+                kind: TerOpKind::Cond,
                 cond: kexp,
                 ifb: kifb,
                 elseb: kelseb,

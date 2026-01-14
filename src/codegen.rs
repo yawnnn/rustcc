@@ -75,21 +75,21 @@ fn gen_unique_label() -> String {
 }
 
 /// generate assembly for
-/// - `BinOpKind::ArithAdd`
-/// - `BinOpKind::ArithSub`
-/// - `BinOpKind::ArithMul`
-/// - `BinOpKind::ArithDiv`
-/// - `BinOpKind::ArithMod`
+/// - `BinOpKind::Add`
+/// - `BinOpKind::Sub`
+/// - `BinOpKind::Mul`
+/// - `BinOpKind::Div`
+/// - `BinOpKind::Mod`
 fn gen_exp_binop_aritmethic(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
     let mut output = Assembly::new();
 
     #[rustfmt::skip]
     let (op1, op2, istr, div, remainder) = match kind {
-        BinOpKind::ArithAdd => (op1, op2, "add" , false, false),
-        BinOpKind::ArithSub => (op2, op1, "sub" , false, false),
-        BinOpKind::ArithMul => (op1, op2, "imul", false, false),
-        BinOpKind::ArithDiv => (op2, op1, "idiv", true , false),
-        BinOpKind::ArithMod => (op2, op1, "idiv", true , true ),
+        BinOpKind::Add => (op1, op2, "add" , false, false),
+        BinOpKind::Sub => (op2, op1, "sub" , false, false),
+        BinOpKind::Mul => (op1, op2, "imul", false, false),
+        BinOpKind::Div => (op2, op1, "idiv", true , false),
+        BinOpKind::Mod => (op2, op1, "idiv", true , true ),
         _ => unreachable!(),
     };
 
@@ -114,14 +114,14 @@ fn gen_exp_binop_aritmethic(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly 
 }
 
 /// generate assembly for
-/// - `BinOpKind::BitShLeft`
-/// - `BinOpKind::BitShRight`
+/// - `BinOpKind::LShift`
+/// - `BinOpKind::RShift`
 fn gen_exp_binop_bitshift(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
     let mut output = Assembly::new();
 
     let instr = match kind {
-        BinOpKind::BitShLeft => "sal",
-        BinOpKind::BitShRight => "sar",
+        BinOpKind::LShift => "sal",
+        BinOpKind::RShift => "sar",
         _ => unreachable!(),
     };
 
@@ -135,22 +135,22 @@ fn gen_exp_binop_bitshift(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
 }
 
 /// generate assembly for
-/// - `BinOpKind::RelatEq`
-/// - `BinOpKind::RelatNotEq`
-/// - `BinOpKind::RelatLt`
-/// - `BinOpKind::RelatLeq`
-/// - `BinOpKind::RelatGt`
-/// - `BinOpKind::RelatGeq`
+/// - `BinOpKind::Eq`
+/// - `BinOpKind::Neq`
+/// - `BinOpKind::Lt`
+/// - `BinOpKind::Leq`
+/// - `BinOpKind::Gt`
+/// - `BinOpKind::Geq`
 fn gen_exp_binop_relational(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
     let mut output = Assembly::new();
 
     let set_instr = match kind {
-        BinOpKind::RelatEq => "sete",
-        BinOpKind::RelatNotEq => "setne",
-        BinOpKind::RelatLt => "setl",
-        BinOpKind::RelatLeq => "setle",
-        BinOpKind::RelatGt => "setg",
-        BinOpKind::RelatGeq => "setge",
+        BinOpKind::Eq => "sete",
+        BinOpKind::Neq => "setne",
+        BinOpKind::Lt => "setl",
+        BinOpKind::Leq => "setle",
+        BinOpKind::Gt => "setg",
+        BinOpKind::Geq => "setge",
         _ => unreachable!(),
     };
 
@@ -166,16 +166,16 @@ fn gen_exp_binop_relational(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly 
 }
 
 /// generate assembly for
-/// - `BinOpKind::BitWsOr`
-/// - `BinOpKind::BitWsXor`
-/// - `BinOpKind::BitWsAnd`
+/// - `BinOpKind::BitOr`
+/// - `BinOpKind::BitXor`
+/// - `BinOpKind::BitAnd`
 fn gen_exp_binop_bitwise(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
     let mut output = Assembly::new();
 
     let instr = match kind {
-        BinOpKind::BitWsOr => "or",
-        BinOpKind::BitWsXor => "xor",
-        BinOpKind::BitWsAnd => "and",
+        BinOpKind::BitOr => "or",
+        BinOpKind::BitXor => "xor",
+        BinOpKind::BitAnd => "and",
         _ => unreachable!(),
     };
 
@@ -189,16 +189,16 @@ fn gen_exp_binop_bitwise(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
 }
 
 /// generate assembly for
-/// - `BinOpKind::LogicAnd`
-/// - `BinOpKind::LogicOr`
+/// - `BinOpKind::LogAnd`
+/// - `BinOpKind::LogOr`
 fn gen_exp_binop_logical(kind: &BinOpKind, op1: &Exp, op2: &Exp) -> Assembly {
     let mut output = Assembly::new();
     let op2_label = gen_unique_label();
     let end_label = gen_unique_label();
 
     let different_part = match kind {
-        BinOpKind::LogicAnd => Assembly::from(format!("jne {op2_label}")),
-        BinOpKind::LogicOr => {
+        BinOpKind::LogAnd => Assembly::from(format!("jne {op2_label}")),
+        BinOpKind::LogOr => {
             let mut s = Assembly::from(format!("je {op2_label}"));
             s += "mov $1, %rax";
             s
@@ -229,46 +229,44 @@ fn gen_exp(exp: &Exp) -> Assembly {
     match exp {
         Exp::Literal(Literal::I32(integer)) => output += format!("mov ${integer}, %rax"),
         Exp::UnOp(kind, op) => match kind {
-            UnOpKind::ArithNeg => {
+            UnOpKind::Negative => {
                 output += gen_exp(op);
                 output += "neg %rax";
             }
-            UnOpKind::BitWsNot => {
+            UnOpKind::BitNot => {
                 output += gen_exp(op);
                 output += "not %rax";
             }
-            UnOpKind::LogicNot => {
+            UnOpKind::LogNot => {
                 output += gen_exp(op);
                 output += "cmp $0, %rax";
                 output += "mov $0, %rax";
                 output += "sete %al";
             }
+            _ => todo!(),
         },
         Exp::BinOp(kind, op1, op2) => match kind {
-            BinOpKind::ArithAdd
-            | BinOpKind::ArithSub
-            | BinOpKind::ArithMul
-            | BinOpKind::ArithDiv
-            | BinOpKind::ArithMod => {
+            BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul | BinOpKind::Div | BinOpKind::Mod => {
                 output += gen_exp_binop_aritmethic(kind, op1, op2);
             }
-            BinOpKind::BitShLeft | BinOpKind::BitShRight => {
+            BinOpKind::LShift | BinOpKind::RShift => {
                 output += gen_exp_binop_bitshift(kind, op1, op2);
             }
-            BinOpKind::RelatEq
-            | BinOpKind::RelatNotEq
-            | BinOpKind::RelatLt
-            | BinOpKind::RelatLeq
-            | BinOpKind::RelatGt
-            | BinOpKind::RelatGeq => {
+            BinOpKind::Eq
+            | BinOpKind::Neq
+            | BinOpKind::Lt
+            | BinOpKind::Leq
+            | BinOpKind::Gt
+            | BinOpKind::Geq => {
                 output += gen_exp_binop_relational(kind, op1, op2);
             }
-            BinOpKind::BitWsOr | BinOpKind::BitWsXor | BinOpKind::BitWsAnd => {
+            BinOpKind::BitOr | BinOpKind::BitXor | BinOpKind::BitAnd => {
                 output += gen_exp_binop_bitwise(kind, op1, op2);
             }
-            BinOpKind::LogicAnd | BinOpKind::LogicOr => {
+            BinOpKind::LogAnd | BinOpKind::LogOr => {
                 output += gen_exp_binop_logical(kind, op1, op2);
             }
+            _ => todo!(),
         },
         Exp::Assignment(var, value) => {
             output += gen_exp(value);
@@ -277,7 +275,7 @@ fn gen_exp(exp: &Exp) -> Assembly {
         Exp::Var(var) => {
             output += format!("mov -{}(%rbp), %rax", var.offset());
         }
-        Exp::Ternary(cond, trueb, falseb) => {
+        Exp::TerOp(cond, trueb, falseb) => {
             todo!()
         }
     }

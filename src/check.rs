@@ -25,12 +25,12 @@ impl StackRef {
 }
 
 pub enum Exp {
-    BinOp(BinOpKind, Box<Exp>, Box<Exp>),
     UnOp(UnOpKind, Box<Exp>),
+    BinOp(BinOpKind, Box<Exp>, Box<Exp>),
+    TerOp(Box<Exp>, Box<Exp>, Box<Exp>),
     Var(StackRef),
     Assignment(StackRef, Box<Exp>),
     Literal(Literal),
-    Ternary(Box<Exp>, Box<Exp>, Box<Exp>),
 }
 
 pub enum Stmt {
@@ -160,7 +160,7 @@ fn check_exp(ast: &parse::Ast, state: &mut State, ir: &mut IR, exp: &parse::Expr
             let value = literal.value.parse::<i32>().unwrap();
             Exp::Literal(Literal::I32(value))
         }
-        parse::Expression::Ternary { cond, ifb, elseb } => {
+        parse::Expression::TerOp { kind: _, cond, ifb, elseb } => {
             let AstData::Exp(cond) = ast.get(cond) else {
                 panic!();
             };
@@ -176,7 +176,7 @@ fn check_exp(ast: &parse::Ast, state: &mut State, ir: &mut IR, exp: &parse::Expr
             };
             let elseb = check_exp(ast, state, ir, elseb);
 
-            Exp::Ternary(Box::new(cond), Box::new(ifb), Box::new(elseb))
+            Exp::TerOp(Box::new(cond), Box::new(ifb), Box::new(elseb))
         }
     }
 }
