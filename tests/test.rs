@@ -120,7 +120,12 @@ fn run_rustcc<T: AsRef<str>>(
     }
     cmd.args(files.iter().map(|f| f.as_ref()));
 
-    let mut build_retcode = cmd.status().unwrap().code().unwrap();
+    let cmd_output = cmd.output().unwrap();
+    //println!("STDOUT: {}", str::from_utf8(&cmd_output.stdout).unwrap());
+    //println!("STDERR: {}", str::from_utf8(&cmd_output.stderr).unwrap());
+    //println!("STATUSL {}", cmd_output.status.code().unwrap());
+    
+    let mut build_retcode = cmd_output.status.code().unwrap();
     if Path::new(output).exists() || Path::new(asm_path).exists() {
         build_retcode = 0;
     }
@@ -157,7 +162,7 @@ fn get_all_stages() -> Vec<u32> {
                 path.file_name()?
                     .to_str()?
                     .split('_')
-                    .last()?
+                    .next_back()?
                     .parse::<u32>()
                     .ok()
             })?
@@ -277,13 +282,15 @@ fn test_stage(stage: u32, args: &TestArgs) -> (u32, u32) {
 }
 
 #[test]
-fn test_stages() {
+fn main() {
     let args = std::env::args().skip_while(|a| a != "--");
 
     let mut args = TestArgs::parse_from(args);
     if args.stages.is_empty() {
         args.stages = get_all_stages();
     }
+
+    args.stages.sort();
 
     let mut tot_succ = 0;
     let mut tot_fail = 0;
